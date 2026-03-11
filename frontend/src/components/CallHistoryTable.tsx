@@ -45,7 +45,6 @@ export function CallHistoryTable() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentId, setAgentId] = useState('');
   const [callSuccessful, setCallSuccessful] = useState('');
@@ -103,23 +102,22 @@ export function CallHistoryTable() {
     }
   };
 
-  const exportUnknown = async () => {
-    setExporting(true);
-    try {
-      const params = new URLSearchParams();
-      if (agentId) params.set('agent_id', agentId);
-      const res = await api.get(`/call-mappings/export-unknown?${params}`, { responseType: 'blob' });
-      const url = URL.createObjectURL(new Blob([res.data], { type: 'text/csv' }));
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = agentId ? `unknown_calls_${agentId}.csv` : 'unknown_calls.csv';
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setError('Failed to export');
-    } finally {
-      setExporting(false);
-    }
+  const exportCsv = () => {
+    const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result'];
+    const rows = conversations.map((c) => [
+      accountMap[c.conversation_id] ?? '',
+      c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
+      c.conversation_id,
+      c.agent_name ?? '',
+      c.call_duration_secs ?? '',
+      c.call_successful ?? '',
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `call_history${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const conversations = callSuccessful
@@ -186,15 +184,12 @@ export function CallHistoryTable() {
                 {conversations.length} conversation{conversations.length !== 1 ? 's' : ''}
                 {nextCursor && <span className="text-gray-400 dark:text-gray-500 ml-1">(more available)</span>}
               </span>
-              {conversations.some((c) => c.call_successful === 'unknown' || !c.call_successful) && (
-                <button
-                  onClick={exportUnknown}
-                  disabled={exporting}
-                  className="px-3 py-1.5 bg-yellow-500 text-white rounded-md text-xs font-medium hover:bg-yellow-600 disabled:opacity-50 transition-colors"
-                >
-                  {exporting ? 'Exporting…' : `Export Unknown as CSV`}
-                </button>
-              )}
+              <button
+                onClick={exportCsv}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
+              >
+                Export CSV
+              </button>
             </div>
             <div className="overflow-x-auto">
               <table className="w-full">
