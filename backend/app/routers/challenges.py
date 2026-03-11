@@ -141,21 +141,23 @@ class ChallengeGroupOut(BaseModel):
 
 
 class TradeEventContext(BaseModel):
+    model_config = {"extra": "ignore"}
     email: str | None = None
     language: str | None = None
     country: str | None = None
     account_number: str | None = None
-    volume: Decimal | None = None
-    trading_volume: Decimal | None = None
-    profit: Decimal | None = None
+    volume: Any = None
+    trading_volume: Any = None
+    profit: Any = None
     symbol: str | None = None  # CLAUD-94: trading instrument symbol
     affiliate: str | None = None
 
 
 class TradeEventPayload(BaseModel):
-    tenant: int | str | None = None
+    model_config = {"extra": "ignore"}
+    tenant: Any = None
     event: str | None = None
-    customer: int | str | None = None
+    customer: Any = None
     context: TradeEventContext | None = None
 
 
@@ -544,12 +546,21 @@ async def get_optimove_events(
 # ---------------------------------------------------------------------------
 
 
+def _safe_float(v: Any) -> float:
+    """Parse a value to float, returning 0.0 if it can't be parsed."""
+    try:
+        return float(v)
+    except (TypeError, ValueError):
+        return 0.0
+
+
 @router.post("/webhooks/trade-event")
 async def trade_event_webhook(
     payload: TradeEventPayload,
     db: AsyncSession = Depends(get_db),
 ):
     """Receive open_trade events and process challenge progress."""
+    logger.info("WEBHOOK: received payload: %s", payload.model_dump())
     _ACTION_BONUS_EVENTS = ("live_details", "submit_documents")
     if not payload.event or payload.event not in ("open_trade", "close_trade") + _ACTION_BONUS_EVENTS:
         return {"status": "ignored", "reason": "not a supported trade event"}
@@ -582,8 +593,8 @@ async def trade_event_webhook(
 
     account_number = ctx.account_number  # MT4 login
     event_type = payload.event  # "open_trade" or "close_trade"
-    trade_volume = float(ctx.volume or ctx.trading_volume or 0)
-    trade_profit = float(ctx.profit or 0)
+    trade_volume = _safe_float(ctx.volume) or _safe_float(ctx.trading_volume)
+    trade_profit = _safe_float(ctx.profit)
 
     # CLAUD-93: For close_trade, skip if profit is non-positive
     if event_type == "close_trade" and trade_profit <= 0:
