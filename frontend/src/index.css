@@ -1,0 +1,23 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+html, body, #root {
+  overflow-x: hidden;
+  max-width: 100vw;
+}
+
+@supports (padding-bottom: env(safe-area-inset-bottom)) {
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
+
+@media (max-width: 767px) {
+  * {
+    -webkit-overflow-scrolling: touch;
+  }
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+}
