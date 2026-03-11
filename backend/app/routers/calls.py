@@ -181,3 +181,24 @@ async def get_calls_dashboard(
     response_data = {"agents": result, "total_calls": total_calls}
     _calls_dashboard_cache[cache_key] = (time.time(), response_data)
     return response_data
+
+
+@router.get("/elevenlabs/agents")
+async def list_elevenlabs_agents(request: Request, _user=Depends(get_current_user)):
+    """Proxy ElevenLabs agent list so the API key stays server-side."""
+    try:
+        response = await request.app.state.http_client.get(
+            "https://api.elevenlabs.io/v1/convai/agents",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=10.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        agents = [
+            {"agent_id": a["agent_id"], "name": a.get("name") or a["agent_id"]}
+            for a in data.get("agents", [])
+        ]
+        return {"agents": agents}
+    except Exception as e:
+        logger.warning("Failed to fetch ElevenLabs agents: %s", e)
+        return {"agents": []}

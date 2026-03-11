@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import axios from 'axios';
 
 import { getCallHistory } from '../api/client';
+import { AgentSelect } from './AgentSelect';
 import type { ElevenLabsConversation } from '../types';
 
 const api = axios.create({ baseURL: import.meta.env.VITE_API_BASE_URL || '/api' });
@@ -146,14 +147,8 @@ export function CallHistoryTable() {
       {/* Filters */}
       <div className="bg-white dark:bg-gray-800 rounded-lg shadow p-4 flex flex-wrap gap-3 items-end">
         <div className="flex-1 min-w-48">
-          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Agent ID</label>
-          <input
-            type="text"
-            placeholder="e.g. agent_0101khtww71ve…"
-            value={agentId}
-            onChange={(e) => setAgentId(e.target.value)}
-            className="w-full border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Agent</label>
+          <AgentSelect value={agentId} onChange={setAgentId} />
         </div>
         <div>
           <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Call Result</label>
