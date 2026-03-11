@@ -6,21 +6,25 @@ from sqlalchemy.orm import Mapped, mapped_column
 from app.pg_database import Base
 
 ALL_PAGES = [
-    # Admin
-    "users",
-    "roles",
-    "permissions",
-    "integrations",
-    "audit-log",
-    # Marketing
-    "challenges",
-    "action-bonuses",
-    # AI Calls
+    "performance-dashboard",
     "call-manager",
     "call-history",
     "call-dashboard",
     "batch-call",
+    "retention",
+    "retention-tasks",
+    "client-scoring",
+    "retention-dial",
     "elena-ai-upload",
+    # CLAUD-154: Additional pages that exist in the system
+    "retention_grid_export",
+    "users",
+    "roles",
+    "data-sync",
+    "challenges",
+    "action-bonuses",
+    # CLAUD-156: Agent Activity page
+    "agent_activity",
 ]
 
 
