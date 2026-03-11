@@ -34,15 +34,6 @@ interface NavSection {
 
 const NAV_SECTIONS: NavSection[] = [
   {
-    title: 'Admin',
-    items: [
-      { to: '/admin/users', label: 'Users', permission: 'users' },
-      { to: '/admin/roles', label: 'Roles', permission: 'roles' },
-      { to: '/admin/permissions', label: 'Permissions', permission: 'permissions' },
-      { to: '/admin/integrations', label: 'Integrations & Config', permission: 'integrations' },
-    ],
-  },
-  {
     title: 'Marketing',
     items: [
       { to: '/admin/challenges', label: 'Challenges', permission: 'challenges' },
@@ -57,6 +48,15 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/call-dashboard', label: 'AI Call Dashboard', permission: 'call-dashboard' },
       { to: '/batch-call', label: 'Batch Call from File', permission: 'batch-call' },
       { to: '/elena-ai/upload-campaign', label: 'Upload to Campaign', permission: 'elena-ai-upload' },
+    ],
+  },
+  {
+    title: 'Admin',
+    items: [
+      { to: '/admin/users', label: 'Users', permission: 'users' },
+      { to: '/admin/roles', label: 'Roles', permission: 'roles' },
+      { to: '/admin/permissions', label: 'Permissions', permission: 'permissions' },
+      { to: '/admin/integrations', label: 'Integrations & Config', permission: 'integrations' },
     ],
   },
 ];
