@@ -180,7 +180,7 @@ class SymbolMappingIn(BaseModel):
 @router.get("/challenges/dashboard")
 async def challenges_dashboard(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Return aggregated analytics for the Challenges Dashboard tab."""
 
