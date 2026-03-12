@@ -48,25 +48,54 @@ class CampaignConfigIn(BaseModel):
     label: str | None = None
 
 
-# ── MSSQL write helper ─────────────────────────────────────────────────
+# ── MSSQL batch helpers ────────────────────────────────────────────────
 
-def _execute_write_sync(query: str, params: tuple) -> int:
-    """Execute a write query against MSSQL (INSERT/UPDATE). Returns rowcount."""
+def _batch_sync_page_sync(rows: list[tuple]) -> tuple[int, int]:
+    """
+    Single MSSQL connection per page:
+    1. Check which CallIDs already exist (one IN query)
+    2. Bulk-insert only the new ones (executemany)
+    Returns (inserted, skipped).
+    """
     import pyodbc
     from app.config import settings
+
+    if not rows:
+        return 0, 0
+
     conn = pyodbc.connect(settings.mssql_connection_string)
     try:
         cursor = conn.cursor()
-        cursor.execute(query, params)
-        rowcount = cursor.rowcount
-        conn.commit()
-        return rowcount
+        call_ids = [r[0] for r in rows]
+
+        # Check existing in one query
+        placeholders = ",".join("?" * len(call_ids))
+        cursor.execute(
+            f"SELECT CallID FROM [cmt_main].[dbo].[Elena_AI_Results] WHERE CallID IN ({placeholders})",
+            call_ids,
+        )
+        existing = {r[0] for r in cursor.fetchall()}
+
+        new_rows = [r for r in rows if r[0] not in existing]
+        skipped = len(rows) - len(new_rows)
+
+        if new_rows:
+            cursor.executemany(
+                "INSERT INTO [cmt_main].[dbo].[Elena_AI_Results] "
+                "(CallID, UserID, Campaign, Duration, Call_start, Call_Status, Goal_Reached, Modification_Date) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                new_rows,
+            )
+            conn.commit()
+
+        return len(new_rows), skipped
     finally:
         conn.close()
 
 
-async def mssql_write(query: str, params: tuple = ()) -> int:
-    return await asyncio.to_thread(_execute_write_sync, query, params)
+async def batch_sync_page(rows: list[tuple]) -> tuple[int, int]:
+    """Async wrapper for _batch_sync_page_sync."""
+    return await asyncio.to_thread(_batch_sync_page_sync, rows)
 
 
 # ── Upload clients to campaign ─────────────────────────────────────────
@@ -233,41 +262,34 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
                 if not calls:
                     break  # No more pages
 
-                page_inserted = page_skipped = page_errors = 0
-
+                # Build rows for batch processing — skip calls with no ID
+                page_rows = []
+                page_errors = 0
                 for call in calls:
                     try:
                         call_id = _safe(call.get("id"))
                         if not call_id:
                             page_errors += 1
                             continue
-
-                        existing = await mssql_query(
-                            "SELECT 1 FROM [cmt_main].[dbo].[Elena_AI_Results] WHERE CallID = ?",
-                            (call_id,),
-                        )
-                        if existing:
-                            page_skipped += 1
-                            continue
-
                         user_id = _safe((call.get("promptVars") or {}).get("additionalProp1"))
                         goal_reached = 1 if (call.get("goal") or {}).get("reached") else 0
                         call_status = _safe(call.get("status"))
                         duration = call.get("duration") or 0
                         updated_at = _safe(call.get("updatedAt"))
                         created_at = _safe(call.get("createdAt"))
-
-                        await mssql_write(
-                            "INSERT INTO [cmt_main].[dbo].[Elena_AI_Results] "
-                            "(CallID, UserID, Campaign, Duration, Call_start, Call_Status, Goal_Reached, Modification_Date) "
-                            "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
-                            (call_id, user_id, campaign_name, duration, created_at, call_status, goal_reached, updated_at),
-                        )
-                        page_inserted += 1
-
+                        page_rows.append((call_id, user_id, campaign_name, duration,
+                                          created_at, call_status, goal_reached, updated_at))
                     except Exception as e:
-                        logger.warning("Elena AI | call %s error: %s", call.get("id"), e)
+                        logger.warning("Elena AI | parse call error: %s", e)
                         page_errors += 1
+
+                # One MSSQL round-trip for the whole page
+                try:
+                    page_inserted, page_skipped = await batch_sync_page(page_rows)
+                except Exception as e:
+                    logger.warning("Elena AI | batch_sync_page error page %d: %s", page, e)
+                    page_inserted, page_skipped = 0, 0
+                    page_errors += len(page_rows)
 
                 cam_totals["fetched"] += len(calls)
                 cam_totals["inserted"] += page_inserted
