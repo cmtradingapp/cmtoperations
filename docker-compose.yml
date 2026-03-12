@@ -16,9 +16,6 @@ services:
     depends_on:
       - postgres
     restart: unless-stopped
-    networks:
-      - default
-      - operations_default
 
   frontend:
     build: ./frontend
@@ -30,7 +27,3 @@ services:
 
 volumes:
   postgres_data:
-
-networks:
-  operations_default:
-    external: true
