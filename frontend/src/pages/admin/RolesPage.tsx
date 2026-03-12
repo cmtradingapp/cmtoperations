@@ -27,6 +27,7 @@ const PAGE_LABELS: Record<string, string> = {
   'data-sync': 'Data Sync',
   'challenges': 'Challenges',
   'action-bonuses': 'Automatic Bonus',
+  'elena-ai-results': 'Elena AI Results',
 };
 
 interface Role {

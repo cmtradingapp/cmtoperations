@@ -1445,6 +1445,22 @@ async def lifespan(app: FastAPI):
             await session.commit()
     except Exception as _e:
         logger.warning("CLAUD-156: agent_activity seed skipped: %s", _e)
+    # Elena AI campaign configs table
+    try:
+        async with AsyncSessionLocal() as session:
+            await session.execute(_text("""
+                CREATE TABLE IF NOT EXISTS elena_ai_campaign_configs (
+                    id SERIAL PRIMARY KEY,
+                    campaign_id VARCHAR(100) NOT NULL UNIQUE,
+                    label VARCHAR(200),
+                    created_at TIMESTAMP DEFAULT NOW()
+                )
+            """))
+            await session.commit()
+        logger.info("elena_ai_campaign_configs table migration applied")
+    except Exception as _e:
+        logger.warning("elena_ai_campaign_configs migration skipped: %s", _e)
+
     app.state.http_client = httpx.AsyncClient(timeout=30.0)
     logger.info("Shared HTTP client initialised")
     # CLAUD-153: Resume any batch jobs that were running when the server last restarted
