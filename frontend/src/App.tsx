@@ -20,6 +20,7 @@ import { CallHistoryPage } from './pages/CallHistoryPage';
 import { AiCallDashboardPage } from './pages/AiCallDashboardPage';
 import { BatchCallPage } from './pages/BatchCallPage';
 import { ElenaAiUploadPage } from './pages/ElenaAiUploadPage';
+import { ElenaAiResultsPage } from './pages/ElenaAiResultsPage';
 import { ChallengesPage } from './pages/ChallengesPage';
 import { ActionBonusesPage } from './pages/admin/ActionBonusesPage';
 
@@ -38,6 +39,7 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/admin/challenges', label: 'Challenges', permission: 'challenges' },
       { to: '/admin/action-bonuses', label: 'Automatic Bonus', permission: 'action-bonuses' },
+      { to: '/admin/elena-ai-results', label: 'Elena AI Results', permission: 'elena-ai-results' },
     ],
   },
   {
@@ -73,6 +75,7 @@ const ROUTES: { path: string; title: string; element: ReactNode; permission?: st
   { path: '/call-dashboard', title: 'AI Call Dashboard', element: <AiCallDashboardPage />, permission: 'call-dashboard' },
   { path: '/batch-call', title: 'Batch Call from File', element: <BatchCallPage />, permission: 'batch-call' },
   { path: '/elena-ai/upload-campaign', title: 'Upload to Campaign', element: <ElenaAiUploadPage />, permission: 'elena-ai-upload' },
+  { path: '/admin/elena-ai-results', title: 'Elena AI Results', element: <ElenaAiResultsPage />, permission: 'elena-ai-results' },
 ];
 
 // ---------------------------------------------------------------------------

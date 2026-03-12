@@ -26,8 +26,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth_deps import require_admin
 from app.pg_database import get_db
+from app.rbac import make_page_guard
+
+_require_challenges = make_page_guard("challenges")
 
 logger = logging.getLogger(__name__)
 
@@ -171,6 +173,241 @@ class SymbolMappingIn(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# CLAUD-181: Challenges Dashboard — analytics overview endpoint
+# ---------------------------------------------------------------------------
+
+
+@router.get("/challenges/dashboard")
+async def challenges_dashboard(
+    db: AsyncSession = Depends(get_db),
+    _=Depends(_require_challenges),
+):
+    """Return aggregated analytics for the Challenges Dashboard tab."""
+
+    from decimal import Decimal as D
+
+    def _row_to_dict(row) -> dict:
+        return dict(row._mapping) if row else {}
+
+    def _serial(v):
+        """Make values JSON-serialisable."""
+        if isinstance(v, (D, Decimal)):
+            return float(v)
+        if isinstance(v, (datetime, date)):
+            return v.isoformat()
+        return v
+
+    def _clean(d: dict) -> dict:
+        return {k: _serial(v) for k, v in d.items()}
+
+    # 1. Snapshot (today's live data)
+    snap_row = await db.execute(text("""
+        SELECT
+            (SELECT COUNT(DISTINCT group_name) FROM challenges WHERE isactive = 1)
+                AS active_challenges,
+            (SELECT COUNT(DISTINCT accountid)
+             FROM challenge_client_progress
+             WHERE status = 'In Progress' AND date = CURRENT_DATE AND accountid IS NOT NULL)
+                AS clients_in_progress_today,
+            (SELECT COUNT(DISTINCT accountid)
+             FROM challenge_client_progress
+             WHERE status = 'Completed' AND date = CURRENT_DATE AND accountid IS NOT NULL)
+                AS completions_today,
+            (SELECT COALESCE(SUM(reward_amount), 0)
+             FROM challenge_credit_log
+             WHERE created_at::date = CURRENT_DATE)
+                AS usd_paid_today,
+            (SELECT CASE WHEN COUNT(*) > 0
+                THEN ROUND(100.0 * COUNT(*) FILTER (WHERE api_response NOT LIKE 'ERROR%%') / COUNT(*), 2)
+                ELSE 100.0 END
+             FROM challenge_credit_log)
+                AS credit_api_success_rate_pct
+    """))
+    snapshot = _clean(_row_to_dict(snap_row.fetchone()))
+
+    # 2. Funnel (all-time from credit_log, since progress is purged after 7d)
+    funnel_row = await db.execute(text("""
+        SELECT
+            (SELECT COUNT(DISTINCT accountid)
+             FROM challenge_client_progress
+             WHERE status IN ('In Progress','Completed','Cancelled') AND accountid IS NOT NULL)
+                AS started_7d,
+            (SELECT COUNT(DISTINCT accountid)
+             FROM challenge_client_progress
+             WHERE status = 'Completed' AND accountid IS NOT NULL)
+                AS completed_7d,
+            (SELECT COALESCE(SUM(reward_amount), 0)
+             FROM challenge_credit_log)
+                AS total_usd_paid_alltime
+    """))
+    funnel = _clean(_row_to_dict(funnel_row.fetchone()))
+    started = funnel.get("started_7d", 0) or 0
+    completed = funnel.get("completed_7d", 0) or 0
+    funnel["completion_rate_pct"] = round(completed / started * 100, 2) if started > 0 else 0
+
+    # 3. Daily trend (last 7 days)
+    trend_rows = await db.execute(text("""
+        WITH dp AS (
+            SELECT date,
+                COUNT(DISTINCT accountid)
+                    FILTER (WHERE status IN ('In Progress','Completed','Cancelled'))
+                    AS started,
+                COUNT(DISTINCT accountid)
+                    FILTER (WHERE status = 'Completed')
+                    AS completed
+            FROM challenge_client_progress
+            WHERE accountid IS NOT NULL
+            GROUP BY date
+        ),
+        dc AS (
+            SELECT created_at::date AS payout_date,
+                COALESCE(SUM(reward_amount), 0) AS usd_paid
+            FROM challenge_credit_log
+            WHERE created_at >= CURRENT_DATE - INTERVAL '7 days'
+            GROUP BY created_at::date
+        )
+        SELECT COALESCE(dp.date, dc.payout_date) AS day,
+            COALESCE(dp.started, 0) AS started,
+            COALESCE(dp.completed, 0) AS completed,
+            ROUND(COALESCE(dc.usd_paid, 0)::numeric, 2) AS usd_paid
+        FROM dp
+        FULL OUTER JOIN dc ON dp.date = dc.payout_date
+        ORDER BY day DESC
+        LIMIT 7
+    """))
+    daily_trend = [_clean(_row_to_dict(r)) for r in trend_rows.fetchall()]
+
+    # 4. Type distribution
+    type_rows = await db.execute(text("""
+        SELECT type, COUNT(DISTINCT group_name) AS count
+        FROM challenges WHERE isactive = 1
+        GROUP BY type ORDER BY count DESC
+    """))
+    type_distribution = [_clean(_row_to_dict(r)) for r in type_rows.fetchall()]
+
+    # 5. Payout by group
+    payout_rows = await db.execute(text("""
+        SELECT
+            COALESCE(ccl.group_name, c.group_name) AS group_name,
+            ROUND(SUM(ccl.reward_amount)::numeric, 2) AS total_paid
+        FROM challenge_credit_log ccl
+        LEFT JOIN challenges c ON c."challengeId" = ccl."challengeId"
+        WHERE COALESCE(ccl.group_name, c.group_name) IS NOT NULL
+        GROUP BY COALESCE(ccl.group_name, c.group_name)
+        ORDER BY total_paid DESC
+    """))
+    payout_by_group = [_clean(_row_to_dict(r)) for r in payout_rows.fetchall()]
+
+    # 6. Optimove health
+    opt_rows = await db.execute(text("""
+        SELECT event_name,
+            COUNT(*) FILTER (WHERE success = TRUE) AS success_count,
+            COUNT(*) FILTER (WHERE success = FALSE) AS failure_count,
+            COUNT(*) AS total,
+            CASE WHEN COUNT(*) > 0
+                THEN ROUND(100.0 * COUNT(*) FILTER (WHERE success = TRUE) / COUNT(*), 2)
+                ELSE 0 END AS success_rate_pct
+        FROM optimove_event_log
+        GROUP BY event_name ORDER BY total DESC
+    """))
+    optimove_health = [_clean(_row_to_dict(r)) for r in opt_rows.fetchall()]
+
+    # 7. Per-challenge breakdown
+    pc_rows = await db.execute(text("""
+        WITH group_def AS (
+            SELECT DISTINCT ON (group_name) group_name, type, timeperiod,
+                MAX(isactive) OVER (PARTITION BY group_name) AS is_active,
+                reward_multiplier
+            FROM challenges ORDER BY group_name, "InsertDate" DESC
+        ),
+        progress_stats AS (
+            SELECT c.group_name,
+                COUNT(DISTINCT cp.accountid)
+                    FILTER (WHERE cp.status IN ('In Progress','Completed','Cancelled'))
+                    AS started,
+                COUNT(DISTINCT cp.accountid)
+                    FILTER (WHERE cp.status = 'Completed')
+                    AS completed
+            FROM challenge_client_progress cp
+            JOIN challenges c ON c."challengeId" = cp."challengeId"
+            WHERE cp.accountid IS NOT NULL
+            GROUP BY c.group_name
+        ),
+        credit_stats AS (
+            SELECT COALESCE(ccl.group_name, c.group_name) AS group_name,
+                COUNT(*) AS payout_count,
+                ROUND(SUM(ccl.reward_amount)::numeric, 2) AS total_paid
+            FROM challenge_credit_log ccl
+            LEFT JOIN challenges c ON c."challengeId" = ccl."challengeId"
+            WHERE COALESCE(ccl.group_name, c.group_name) IS NOT NULL
+            GROUP BY COALESCE(ccl.group_name, c.group_name)
+        )
+        SELECT gd.group_name, gd.type, gd.timeperiod, gd.is_active, gd.reward_multiplier,
+            COALESCE(ps.started, 0) AS clients_started,
+            COALESCE(ps.completed, 0) AS clients_completed,
+            CASE WHEN COALESCE(ps.started, 0) > 0
+                THEN ROUND(100.0 * COALESCE(ps.completed, 0) / ps.started, 2)
+                ELSE 0 END AS completion_rate_pct,
+            COALESCE(cs.payout_count, 0) AS payout_count,
+            COALESCE(cs.total_paid, 0) AS total_usd_paid
+        FROM group_def gd
+        LEFT JOIN progress_stats ps ON ps.group_name = gd.group_name
+        LEFT JOIN credit_stats cs ON cs.group_name = gd.group_name
+        ORDER BY gd.group_name
+    """))
+    per_challenge = [_clean(_row_to_dict(r)) for r in pc_rows.fetchall()]
+
+    # 8. Top earners
+    te_rows = await db.execute(text("""
+        SELECT COALESCE(accountid, trading_account_id) AS client_id,
+            COUNT(*) AS total_payouts,
+            ROUND(SUM(reward_amount)::numeric, 2) AS total_usd_earned,
+            COUNT(DISTINCT group_name) AS groups_participated,
+            MIN(created_at) AS first_reward,
+            MAX(created_at) AS last_reward
+        FROM challenge_credit_log
+        GROUP BY COALESCE(accountid, trading_account_id)
+        ORDER BY total_usd_earned DESC LIMIT 20
+    """))
+    top_earners = [_clean(_row_to_dict(r)) for r in te_rows.fetchall()]
+
+    # 9. Streak leaderboard
+    sk_rows = await db.execute(text("""
+        SELECT accountid, group_name, current_streak, last_trade_date,
+            last_rewarded_tier,
+            ROUND(total_reward::numeric, 2) AS total_streak_reward
+        FROM challenge_client_streaks
+        WHERE current_streak > 0
+        ORDER BY current_streak DESC LIMIT 20
+    """))
+    streak_leaderboard = [_clean(_row_to_dict(r)) for r in sk_rows.fetchall()]
+
+    # 10. Asset class diversity
+    div_rows = await db.execute(text("""
+        SELECT group_name, asset_class,
+            COUNT(DISTINCT accountid) AS unique_clients,
+            week_start
+        FROM challenge_client_instruments
+        GROUP BY group_name, asset_class, week_start
+        ORDER BY week_start DESC, group_name, unique_clients DESC
+    """))
+    diversity = [_clean(_row_to_dict(r)) for r in div_rows.fetchall()]
+
+    return {
+        "snapshot": snapshot,
+        "funnel_7d": funnel,
+        "daily_trend": daily_trend,
+        "type_distribution": type_distribution,
+        "payout_by_group": payout_by_group,
+        "optimove_health": optimove_health,
+        "per_challenge": per_challenge,
+        "top_earners": top_earners,
+        "streak_leaderboard": streak_leaderboard,
+        "diversity": diversity,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Admin CRUD endpoints
 # ---------------------------------------------------------------------------
 
@@ -179,7 +416,7 @@ class SymbolMappingIn(BaseModel):
 async def create_challenge_group(
     body: ChallengeGroupIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Create a new challenge group with multiple tiers."""
     # Check if group_name already exists
@@ -224,7 +461,7 @@ async def create_challenge_group(
 @router.get("/challenges")
 async def list_challenge_groups(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """List all challenge groups with their tiers."""
     rows = await db.execute(
@@ -273,7 +510,7 @@ async def list_challenge_groups(
 async def toggle_challenge_group(
     group_name: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Toggle isactive for all tiers in a challenge group."""
     # Get current state
@@ -316,7 +553,7 @@ async def toggle_challenge_group(
 async def delete_challenge_group(
     group_name: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Delete all rows for a challenge group."""
     result = await db.execute(
@@ -346,7 +583,7 @@ async def delete_challenge_group(
 @router.get("/challenges/symbols")
 async def list_symbol_mappings(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """List all symbol -> asset class mappings."""
     rows = await db.execute(
@@ -359,7 +596,7 @@ async def list_symbol_mappings(
 async def upsert_symbol_mapping(
     body: SymbolMappingIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Create or update a symbol -> asset class mapping."""
     sym = body.symbol.upper()
@@ -379,7 +616,7 @@ async def upsert_symbol_mapping(
 async def delete_symbol_mapping(
     symbol: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Delete a symbol -> asset class mapping."""
     result = await db.execute(
@@ -405,7 +642,7 @@ async def get_challenge_progress(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=500, description="Page size"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Return paginated client challenge progress records."""
     from datetime import date as date_type
@@ -483,7 +720,7 @@ async def get_optimove_events(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Return paginated optimove_event_log rows with challenge group name."""
     from datetime import date as date_type

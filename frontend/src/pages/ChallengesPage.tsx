@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 
+import { ChallengeDashboardTab } from '../components/ChallengeDashboardTab';
 import {
   getChallenges,
   createChallenge,
@@ -131,7 +132,7 @@ function statusBadge(status: string) {
 // ---------------------------------------------------------------------------
 
 export function ChallengesPage() {
-  const [activeTab, setActiveTab] = useState<'challenges' | 'progress' | 'events' | 'symbols'>('challenges');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'challenges' | 'progress' | 'events' | 'symbols'>('dashboard');
 
   // ---- Challenges tab state ------------------------------------------------
   const [groups, setGroups] = useState<ChallengeGroup[]>([]);
@@ -150,6 +151,7 @@ export function ChallengesPage() {
   const [progressError, setProgressError] = useState('');
   const [progressDate, setProgressDate] = useState(todayStr());
   const [progressGroup, setProgressGroup] = useState('');
+  const [progressAccountId, setProgressAccountId] = useState('');
   const [progressPage, setProgressPage] = useState(1);
   const PAGE_SIZE = 50;
 
@@ -205,6 +207,7 @@ export function ChallengesPage() {
       const data = await getChallengeProgress({
         date: progressDate,
         group_name: progressGroup || undefined,
+        accountid: progressAccountId.trim() || undefined,
         page: progressPage,
         page_size: PAGE_SIZE,
       });
@@ -222,7 +225,7 @@ export function ChallengesPage() {
       loadProgress();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, progressDate, progressGroup, progressPage]);
+  }, [activeTab, progressDate, progressGroup, progressAccountId, progressPage]);
 
   // ---- Data loading (Events Log - CLAUD-91) --------------------------------
 
@@ -430,6 +433,16 @@ export function ChallengesPage() {
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
         <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'dashboard'
+              ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          Dashboard
+        </button>
+        <button
           onClick={() => setActiveTab('challenges')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'challenges'
@@ -470,6 +483,11 @@ export function ChallengesPage() {
           Symbol Map
         </button>
       </div>
+
+      {/* ============================================================ */}
+      {/* TAB 0: Dashboard (CLAUD-181) */}
+      {/* ============================================================ */}
+      {activeTab === 'dashboard' && <ChallengeDashboardTab />}
 
       {/* ============================================================ */}
       {/* TAB 1: Challenges */}
@@ -924,6 +942,16 @@ export function ChallengesPage() {
                   <option key={g.group_name} value={g.group_name}>{g.group_name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Account ID</label>
+              <input
+                type="text"
+                placeholder="Search by account ID..."
+                value={progressAccountId}
+                onChange={(e) => { setProgressAccountId(e.target.value); setProgressPage(1); }}
+                className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+              />
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400 py-2">
               {progressTotal} record{progressTotal !== 1 ? 's' : ''} found

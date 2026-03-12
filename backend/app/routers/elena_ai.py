@@ -236,9 +236,7 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
 
         cam_totals = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
 
-        page = 0
-        while True:
-            page += 1
+        for page in range(1, 11):
             try:
                 resp = await http_client.get(
                     f"{SQUARETALK_BASE_URL}/{campaign_id}/calls",
@@ -254,27 +252,10 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
                     break
 
                 raw = resp.json()
-                # Log structure on first page so we can debug format issues
-                if page == 1:
-                    logger.info("Elena AI | campaign %s page 1 raw type=%s keys=%s",
-                                campaign_id, type(raw).__name__,
-                                list(raw.keys()) if isinstance(raw, dict) else "list")
-
                 if isinstance(raw, list):
                     calls = raw
                 elif isinstance(raw, dict):
-                    # Try all common SquareTalk response envelope keys
-                    calls = (raw.get("data") or raw.get("calls") or
-                             raw.get("items") or raw.get("results") or
-                             raw.get("records") or [])
-                    if not calls and page == 1:
-                        logger.warning("Elena AI | campaign %s unknown response structure: %s",
-                                       campaign_id, str(raw)[:500])
-                        yield _sse("page_error", {
-                            "campaign_id": campaign_id, "page": page,
-                            "reason": f"Unknown response format: {list(raw.keys())}",
-                        })
-                        break
+                    calls = raw.get("data") or raw.get("calls") or raw.get("items") or []
                 else:
                     calls = []
 
@@ -334,7 +315,6 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
                 # Stop if max_pages limit reached (0 = unlimited)
                 if max_pages > 0 and page >= max_pages:
                     break
-
 
             except Exception as e:
                 yield _sse("page_error", {"campaign_id": campaign_id, "page": page, "reason": str(e)})
@@ -471,7 +451,7 @@ async def get_results_summary(_=Depends(_require_elena)):
     rows = await mssql_query(
         "SELECT Campaign, Call_Status, "
         "COUNT(*) AS status_count, "
-        "SUM(CASE WHEN LOWER(CAST(Goal_Reached AS NVARCHAR(10))) IN ('1', 'true') THEN 1 ELSE 0 END) AS goal_reached_count, "
+        "SUM(CASE WHEN Goal_Reached = 1 THEN 1 ELSE 0 END) AS goal_reached_count, "
         "SUM(ISNULL(Duration, 0)) AS total_duration_secs "
         "FROM [cmt_main].[dbo].[Elena_AI_Results] "
         "WHERE Campaign IS NOT NULL "
