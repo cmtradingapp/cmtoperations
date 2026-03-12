@@ -476,7 +476,7 @@ async def get_results_summary(_=Depends(_require_elena)):
         count = int(r["status_count"] or 0)
         campaigns[cam]["total_calls"] += count
         campaigns[cam]["goal_reached"] += int(r["goal_reached_count"] or 0)
-        campaigns[cam]["total_duration_minutes"] += round((r["total_duration_secs"] or 0) / 60, 1)
+        campaigns[cam]["total_duration_minutes"] += round(float(r["total_duration_secs"] or 0) / 60, 1)
         campaigns[cam]["statuses"][status] = count
 
     return list(campaigns.values())
