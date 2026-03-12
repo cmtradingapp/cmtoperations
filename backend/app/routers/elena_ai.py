@@ -451,7 +451,7 @@ async def get_results_summary(_=Depends(_require_elena)):
     rows = await mssql_query(
         "SELECT Campaign, Call_Status, "
         "COUNT(*) AS status_count, "
-        "SUM(CASE WHEN Goal_Reached = 1 THEN 1 ELSE 0 END) AS goal_reached_count, "
+        "SUM(CASE WHEN LOWER(CAST(Goal_Reached AS NVARCHAR(10))) IN ('1', 'true') THEN 1 ELSE 0 END) AS goal_reached_count, "
         "SUM(ISNULL(Duration, 0)) AS total_duration_secs "
         "FROM [cmt_main].[dbo].[Elena_AI_Results] "
         "WHERE Campaign IS NOT NULL "
