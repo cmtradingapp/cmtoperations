@@ -4,6 +4,7 @@
  */
 import { useEffect, useState } from 'react';
 
+import { ChallengeDashboardTab } from '../components/ChallengeDashboardTab';
 import {
   getChallenges,
   createChallenge,
@@ -131,7 +132,7 @@ function statusBadge(status: string) {
 // ---------------------------------------------------------------------------
 
 export function ChallengesPage() {
-  const [activeTab, setActiveTab] = useState<'challenges' | 'progress' | 'events' | 'symbols'>('challenges');
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'challenges' | 'progress' | 'events' | 'symbols'>('dashboard');
 
   // ---- Challenges tab state ------------------------------------------------
   const [groups, setGroups] = useState<ChallengeGroup[]>([]);
@@ -430,6 +431,16 @@ export function ChallengesPage() {
       {/* Tab bar */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-700">
         <button
+          onClick={() => setActiveTab('dashboard')}
+          className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
+            activeTab === 'dashboard'
+              ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+              : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+          }`}
+        >
+          Dashboard
+        </button>
+        <button
           onClick={() => setActiveTab('challenges')}
           className={`px-4 py-2.5 text-sm font-medium border-b-2 transition-colors ${
             activeTab === 'challenges'
@@ -470,6 +481,11 @@ export function ChallengesPage() {
           Symbol Map
         </button>
       </div>
+
+      {/* ============================================================ */}
+      {/* TAB 0: Dashboard (CLAUD-181) */}
+      {/* ============================================================ */}
+      {activeTab === 'dashboard' && <ChallengeDashboardTab />}
 
       {/* ============================================================ */}
       {/* TAB 1: Challenges */}

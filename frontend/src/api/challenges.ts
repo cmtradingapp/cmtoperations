@@ -214,3 +214,105 @@ export async function deleteSymbolMapping(symbol: string): Promise<{ status: str
   if (!res.ok) throw new Error(`Failed to delete symbol mapping: ${res.status}`);
   return res.json();
 }
+
+// ---------------------------------------------------------------------------
+// CLAUD-181: Challenges Dashboard types & API call
+// ---------------------------------------------------------------------------
+
+export interface DashboardSnapshot {
+  active_challenges: number;
+  clients_in_progress_today: number;
+  completions_today: number;
+  usd_paid_today: number;
+  credit_api_success_rate_pct: number;
+}
+
+export interface DashboardFunnel {
+  started_7d: number;
+  completed_7d: number;
+  completion_rate_pct: number;
+  total_usd_paid_alltime: number;
+}
+
+export interface DailyTrendItem {
+  day: string;
+  started: number;
+  completed: number;
+  usd_paid: number;
+}
+
+export interface TypeDistItem {
+  type: string;
+  count: number;
+}
+
+export interface PayoutGroupItem {
+  group_name: string;
+  total_paid: number;
+}
+
+export interface OptimoveHealthItem {
+  event_name: string;
+  success_count: number;
+  failure_count: number;
+  total: number;
+  success_rate_pct: number;
+}
+
+export interface PerChallengeItem {
+  group_name: string;
+  type: string;
+  timeperiod: string;
+  is_active: number;
+  reward_multiplier: number;
+  clients_started: number;
+  clients_completed: number;
+  completion_rate_pct: number;
+  payout_count: number;
+  total_usd_paid: number;
+}
+
+export interface TopEarnerItem {
+  client_id: string;
+  total_payouts: number;
+  total_usd_earned: number;
+  groups_participated: number;
+  first_reward: string;
+  last_reward: string;
+}
+
+export interface StreakItem {
+  accountid: string;
+  group_name: string;
+  current_streak: number;
+  last_trade_date: string;
+  last_rewarded_tier: number;
+  total_streak_reward: number;
+}
+
+export interface DiversityItem {
+  group_name: string;
+  asset_class: string;
+  unique_clients: number;
+  week_start: string;
+}
+
+export interface ChallengeDashboardData {
+  snapshot: DashboardSnapshot;
+  funnel_7d: DashboardFunnel;
+  daily_trend: DailyTrendItem[];
+  type_distribution: TypeDistItem[];
+  payout_by_group: PayoutGroupItem[];
+  optimove_health: OptimoveHealthItem[];
+  per_challenge: PerChallengeItem[];
+  top_earners: TopEarnerItem[];
+  streak_leaderboard: StreakItem[];
+  diversity: DiversityItem[];
+}
+
+/** CLAUD-181: Fetch challenges dashboard analytics */
+export async function getChallengeDashboard(): Promise<ChallengeDashboardData> {
+  const res = await fetch(`${API_BASE}/challenges/dashboard`, { headers: authHeaders() });
+  if (!res.ok) throw new Error(`Failed to fetch challenges dashboard: ${res.status}`);
+  return res.json();
+}
