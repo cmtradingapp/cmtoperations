@@ -27,3 +27,7 @@ services:
 
 volumes:
   postgres_data:
+
+networks:
+  default:
+    name: ops_internal
