@@ -151,6 +151,7 @@ export function ChallengesPage() {
   const [progressError, setProgressError] = useState('');
   const [progressDate, setProgressDate] = useState(todayStr());
   const [progressGroup, setProgressGroup] = useState('');
+  const [progressAccountId, setProgressAccountId] = useState('');
   const [progressPage, setProgressPage] = useState(1);
   const PAGE_SIZE = 50;
 
@@ -206,6 +207,7 @@ export function ChallengesPage() {
       const data = await getChallengeProgress({
         date: progressDate,
         group_name: progressGroup || undefined,
+        accountid: progressAccountId.trim() || undefined,
         page: progressPage,
         page_size: PAGE_SIZE,
       });
@@ -223,7 +225,7 @@ export function ChallengesPage() {
       loadProgress();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, progressDate, progressGroup, progressPage]);
+  }, [activeTab, progressDate, progressGroup, progressAccountId, progressPage]);
 
   // ---- Data loading (Events Log - CLAUD-91) --------------------------------
 
@@ -940,6 +942,16 @@ export function ChallengesPage() {
                   <option key={g.group_name} value={g.group_name}>{g.group_name}</option>
                 ))}
               </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Account ID</label>
+              <input
+                type="text"
+                placeholder="Search by account ID..."
+                value={progressAccountId}
+                onChange={(e) => { setProgressAccountId(e.target.value); setProgressPage(1); }}
+                className="border border-gray-300 dark:border-gray-600 rounded-md px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 w-48"
+              />
             </div>
             <div className="text-sm text-gray-500 dark:text-gray-400 py-2">
               {progressTotal} record{progressTotal !== 1 ? 's' : ''} found
