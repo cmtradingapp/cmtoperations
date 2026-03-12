@@ -26,8 +26,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth_deps import require_admin
 from app.pg_database import get_db
+from app.rbac import make_page_guard
+
+_require_challenges = make_page_guard("challenges")
 
 logger = logging.getLogger(__name__)
 
@@ -414,7 +416,7 @@ async def challenges_dashboard(
 async def create_challenge_group(
     body: ChallengeGroupIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Create a new challenge group with multiple tiers."""
     # Check if group_name already exists
@@ -459,7 +461,7 @@ async def create_challenge_group(
 @router.get("/challenges")
 async def list_challenge_groups(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """List all challenge groups with their tiers."""
     rows = await db.execute(
@@ -508,7 +510,7 @@ async def list_challenge_groups(
 async def toggle_challenge_group(
     group_name: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Toggle isactive for all tiers in a challenge group."""
     # Get current state
@@ -551,7 +553,7 @@ async def toggle_challenge_group(
 async def delete_challenge_group(
     group_name: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Delete all rows for a challenge group."""
     result = await db.execute(
@@ -581,7 +583,7 @@ async def delete_challenge_group(
 @router.get("/challenges/symbols")
 async def list_symbol_mappings(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """List all symbol -> asset class mappings."""
     rows = await db.execute(
@@ -594,7 +596,7 @@ async def list_symbol_mappings(
 async def upsert_symbol_mapping(
     body: SymbolMappingIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Create or update a symbol -> asset class mapping."""
     sym = body.symbol.upper()
@@ -614,7 +616,7 @@ async def upsert_symbol_mapping(
 async def delete_symbol_mapping(
     symbol: str,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Delete a symbol -> asset class mapping."""
     result = await db.execute(
@@ -640,7 +642,7 @@ async def get_challenge_progress(
     page: int = Query(1, ge=1, description="Page number"),
     page_size: int = Query(50, ge=1, le=500, description="Page size"),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Return paginated client challenge progress records."""
     from datetime import date as date_type
@@ -718,7 +720,7 @@ async def get_optimove_events(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=500),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_challenges),
 ):
     """Return paginated optimove_event_log rows with challenge group name."""
     from datetime import date as date_type

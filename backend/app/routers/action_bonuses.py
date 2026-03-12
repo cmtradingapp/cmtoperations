@@ -12,8 +12,10 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth_deps import require_admin
 from app.pg_database import get_db
+from app.rbac import make_page_guard
+
+_require_action_bonuses = make_page_guard("action-bonuses")
 
 logger = logging.getLogger(__name__)
 
@@ -182,7 +184,7 @@ async def process_action_bonus(
 async def list_rules(
     action: str | None = Query(None),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """List all action bonus rules, optionally filtered by action."""
     q = "SELECT id, action, countries, affiliates, reward_amount, reward_type, priority, isactive, created_at FROM action_bonus_rules"
@@ -212,7 +214,7 @@ async def list_rules(
 async def create_rule(
     body: ActionBonusRuleIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Create a new action bonus rule. Priority is set to max+1 for the action."""
     # Compute next priority
@@ -248,7 +250,7 @@ async def update_rule(
     rule_id: int,
     body: ActionBonusRuleIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Update an existing action bonus rule."""
     existing = await db.execute(
@@ -282,7 +284,7 @@ async def update_rule(
 async def toggle_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Toggle isactive for a rule."""
     row = await db.execute(
@@ -306,7 +308,7 @@ async def toggle_rule(
 async def delete_rule(
     rule_id: int,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Delete an action bonus rule."""
     result = await db.execute(
@@ -323,7 +325,7 @@ async def delete_rule(
 async def reorder_rules(
     body: ReorderRulesIn,
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Bulk-update priority values for rules of the given action. rule_ids order = priority order."""
     for priority, rule_id in enumerate(body.rule_ids):
@@ -345,7 +347,7 @@ async def get_bonus_log(
     page: int = Query(1, ge=1),
     page_size: int = Query(50, ge=1, le=200),
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Paginated action bonus log with filters."""
     conditions = []
@@ -411,7 +413,7 @@ async def get_bonus_log(
 @router.get("/campaigns")
 async def get_campaigns(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Return distinct campaign_legacy_id values from vtiger_campaigns."""
     rows = await db.execute(
@@ -428,7 +430,7 @@ async def get_campaigns(
 @router.get("/countries")
 async def get_countries(
     db: AsyncSession = Depends(get_db),
-    _=Depends(require_admin),
+    _=Depends(_require_action_bonuses),
 ):
     """Return distinct country values from the bonus log and a common hardcoded list."""
     # Try to get from existing client data
