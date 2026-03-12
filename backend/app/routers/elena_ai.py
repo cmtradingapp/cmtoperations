@@ -181,7 +181,7 @@ def _safe(val: Any) -> str | None:
     return s or None
 
 
-async def _stream_sync(http_client, configs: list) -> AsyncGenerator[str, None]:
+async def _stream_sync(http_client, configs: list, per_page: int = 300, max_pages: int = 0) -> AsyncGenerator[str, None]:
     """
     Generator that yields SSE events while syncing each campaign.
     Events: campaign_start | page_progress | campaign_done | complete | error
@@ -211,7 +211,7 @@ async def _stream_sync(http_client, configs: list) -> AsyncGenerator[str, None]:
             try:
                 resp = await http_client.get(
                     f"{SQUARETALK_BASE_URL}/{campaign_id}/calls",
-                    params={"page": page, "perPage": 300},
+                    params={"page": page, "perPage": per_page},
                     headers={"Authorization": SQUARETALK_API_TOKEN},
                     timeout=30.0,
                 )
@@ -287,8 +287,11 @@ async def _stream_sync(http_client, configs: list) -> AsyncGenerator[str, None]:
                     "total_errors": cam_totals["errors"],
                 })
 
-                # If fewer than 300 returned, this was the last page
-                if len(calls) < 300:
+                # Stop if last page (fewer results than requested)
+                if len(calls) < per_page:
+                    break
+                # Stop if max_pages limit reached (0 = unlimited)
+                if max_pages > 0 and page >= max_pages:
                     break
 
             except Exception as e:
@@ -308,6 +311,8 @@ async def _stream_sync(http_client, configs: list) -> AsyncGenerator[str, None]:
 async def sync_stream(
     request: Request,
     token: str = Query(...),
+    per_page: int = Query(300, ge=1, le=1000),
+    max_pages: int = Query(0, ge=0),  # 0 = unlimited
 ):
     """SSE endpoint — streams real-time sync progress. Auth via ?token= query param."""
     # Validate token (EventSource can't send headers)
@@ -330,7 +335,7 @@ async def sync_stream(
 
     http_client = request.app.state.http_client
     return StreamingResponse(
-        _stream_sync(http_client, configs),
+        _stream_sync(http_client, configs, per_page=per_page, max_pages=max_pages),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

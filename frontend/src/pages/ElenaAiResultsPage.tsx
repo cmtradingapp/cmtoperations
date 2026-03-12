@@ -77,6 +77,10 @@ export function ElenaAiResultsPage() {
   const [configLoading, setConfigLoading] = useState(false);
   const [configError, setConfigError] = useState('');
 
+  // Sync settings
+  const [perPage, setPerPage] = useState(300);
+  const [maxPages, setMaxPages] = useState(0); // 0 = unlimited
+
   // Sync state
   const [syncing, setSyncing] = useState(false);
   const [syncDone, setSyncDone] = useState(false);
@@ -167,7 +171,7 @@ export function ElenaAiResultsPage() {
     // Build URL with auth token as query param (EventSource doesn't support custom headers)
     const auth = JSON.parse(localStorage.getItem('auth') || '{}');
     const token = auth?.state?.token || '';
-    const url = `${API_BASE}/elena-ai/sync-stream?token=${encodeURIComponent(token)}`;
+    const url = `${API_BASE}/elena-ai/sync-stream?token=${encodeURIComponent(token)}&per_page=${perPage}&max_pages=${maxPages}`;
 
     const es = new EventSource(url);
     esRef.current = es;
@@ -397,9 +401,37 @@ export function ElenaAiResultsPage() {
               <div>
                 <h2 className="text-sm font-semibold text-gray-700 dark:text-gray-300">Sync Call Results</h2>
                 <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                  Fetches up to 3,000 calls per campaign and inserts new records into MSSQL.
+                  Fetches all pages from SquareTalk and inserts new records into MSSQL.
                 </p>
               </div>
+
+              {/* Pagination settings */}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Results per page</label>
+                  <input
+                    type="number"
+                    min={1} max={1000}
+                    value={perPage}
+                    onChange={e => setPerPage(Math.max(1, Math.min(1000, Number(e.target.value))))}
+                    disabled={syncing}
+                    className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm dark:bg-gray-700 dark:text-gray-100 w-20 text-center"
+                  />
+                </div>
+                <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-500 dark:text-gray-400 whitespace-nowrap">Max pages</label>
+                  <input
+                    type="number"
+                    min={0}
+                    value={maxPages}
+                    onChange={e => setMaxPages(Math.max(0, Number(e.target.value)))}
+                    disabled={syncing}
+                    className="border border-gray-300 dark:border-gray-600 rounded-md px-2 py-1 text-sm dark:bg-gray-700 dark:text-gray-100 w-20 text-center"
+                  />
+                  <span className="text-xs text-gray-400">(0 = all)</span>
+                </div>
+              </div>
+
               <div className="flex gap-2">
                 {syncing && (
                   <button
