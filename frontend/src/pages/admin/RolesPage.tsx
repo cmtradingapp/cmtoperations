@@ -9,26 +9,23 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-const PAGE_LABELS: Record<string, string> = {
-  'performance-dashboard': 'Performance Dashboard',
-  'call-manager': 'Call Manager',
-  'call-history': 'Call History',
-  'call-dashboard': 'AI Call Dashboard',
-  'batch-call': 'Batch Call from File',
-  'retention': 'Retention Manager',
-  'retention-tasks': 'Retention Tasks',
-  'client-scoring': 'Client Scoring',
-  'retention-dial': 'Call Dashboard',
-  'elena-ai-upload': 'Elena AI Upload',
-  // CLAUD-154: Additional pages
-  'retention_grid_export': 'Retention Grid Export',
-  'users': 'Users',
-  'roles': 'Roles',
-  'data-sync': 'Data Sync',
-  'challenges': 'Challenges',
-  'action-bonuses': 'Automatic Bonus',
-  'elena-ai-results': 'Elena AI Results',
-};
+// Exactly the pages that exist in the current nav — grouped to match sidebar sections
+const NAV_PAGES: { section: string; key: string; label: string }[] = [
+  { section: 'Marketing', key: 'challenges',        label: 'Challenges' },
+  { section: 'Marketing', key: 'action-bonuses',    label: 'Automatic Bonus' },
+  { section: 'Marketing', key: 'elena-ai-results',  label: 'Elena AI Results' },
+  { section: 'AI Calls',  key: 'call-manager',      label: 'Call Manager' },
+  { section: 'AI Calls',  key: 'call-history',      label: 'Call History' },
+  { section: 'AI Calls',  key: 'call-dashboard',    label: 'AI Call Dashboard' },
+  { section: 'AI Calls',  key: 'batch-call',        label: 'Batch Call from File' },
+  { section: 'AI Calls',  key: 'elena-ai-upload',   label: 'Upload to Campaign' },
+  { section: 'Admin',     key: 'users',             label: 'Users' },
+  { section: 'Admin',     key: 'roles',             label: 'Roles' },
+  { section: 'Admin',     key: 'permissions',       label: 'Permissions' },
+  { section: 'Admin',     key: 'integrations',      label: 'Integrations & Config' },
+];
+
+const PAGE_LABELS: Record<string, string> = Object.fromEntries(NAV_PAGES.map((p) => [p.key, p.label]));
 
 interface Role {
   id: number;
@@ -218,7 +215,6 @@ function ColumnVisibilitySection({ roleName }: { roleName: string }) {
 
 export function RolesPage() {
   const [roles, setRoles] = useState<Role[]>([]);
-  const [allPages, setAllPages] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editId, setEditId] = useState<number | null>(null);
@@ -230,12 +226,8 @@ export function RolesPage() {
 
   const load = async () => {
     try {
-      const [rolesRes, pagesRes] = await Promise.all([
-        api.get('/admin/roles'),
-        api.get('/admin/pages'),
-      ]);
+      const rolesRes = await api.get('/admin/roles');
       setRoles(rolesRes.data);
-      setAllPages(pagesRes.data);
     } finally {
       setLoading(false);
     }
@@ -321,17 +313,24 @@ export function RolesPage() {
           </div>
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Page Access</label>
-            <div className="flex flex-wrap gap-3">
-              {allPages.map((page) => (
-                <label key={page} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
-                  <input
-                    type="checkbox"
-                    checked={form.permissions.includes(page)}
-                    onChange={() => togglePermission(page)}
-                    className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
-                  />
-                  {PAGE_LABELS[page] ?? page}
-                </label>
+            <div className="space-y-3">
+              {['Marketing', 'AI Calls', 'Admin'].map((section) => (
+                <div key={section}>
+                  <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">{section}</p>
+                  <div className="flex flex-wrap gap-3">
+                    {NAV_PAGES.filter((p) => p.section === section).map((page) => (
+                      <label key={page.key} className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={form.permissions.includes(page.key)}
+                          onChange={() => togglePermission(page.key)}
+                          className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
+                        />
+                        {page.label}
+                      </label>
+                    ))}
+                  </div>
+                </div>
               ))}
             </div>
           </div>
