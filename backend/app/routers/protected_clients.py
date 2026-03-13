@@ -209,7 +209,7 @@ async def expire_protected_clients() -> None:
               AND apt.retention_promo_group IN (32, 33, 34)
               AND (
                 apt.count_of_trades >= rpg.count_of_trades
-                OR apt.cash_bonus_left_new >= rpg.max_amount_bonus
+                OR apt.cash_bonus_left_new >= rpg.max_total_amount
                 OR DATEDIFF(day, apt.dateadded, GETDATE()) >= rpg.days_from_ftd
               )
             """,
