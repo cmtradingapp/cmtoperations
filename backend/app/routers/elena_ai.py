@@ -236,7 +236,9 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
 
         cam_totals = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
 
-        for page in range(1, 11):
+        page = 0
+        while True:
+            page += 1
             try:
                 resp = await http_client.get(
                     f"{SQUARETALK_BASE_URL}/{campaign_id}/calls",
