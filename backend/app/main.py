@@ -43,6 +43,7 @@ from app.routers.saved_searches import router as saved_searches_router
 from app.routers.sendgrid_admin import router as sendgrid_router
 from app.routers.batch_calls import router as batch_calls_router
 from app.routers.agent_activity import router as agent_activity_router
+from app.routers.protected_clients import router as protected_clients_router
 from app.seed import seed_admin
 
 logging.basicConfig(level=logging.INFO)
@@ -1703,6 +1704,7 @@ app.include_router(saved_searches_router, prefix="/api")
 app.include_router(sendgrid_router, prefix="/api")
 app.include_router(batch_calls_router, prefix="/api")
 app.include_router(agent_activity_router, prefix="/api")
+app.include_router(protected_clients_router, prefix="/api")
 
 
 @app.get("/health")

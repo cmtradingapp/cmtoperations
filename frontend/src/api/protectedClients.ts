@@ -1,0 +1,32 @@
+const API_BASE = import.meta.env.VITE_API_BASE_URL || '/api';
+
+function authHeaders(): Record<string, string> {
+  const auth = JSON.parse(localStorage.getItem('auth') || '{}');
+  const token = auth?.state?.token;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+export interface AddProtectedResult {
+  status: 'success' | 'already_protected' | 'client_not_found';
+  action?: 'added' | 'updated';
+  accountid?: string;
+  group?: number;
+  mt4login?: string;
+  trading_account_id?: string;
+  message?: string;
+  current_group?: number;
+}
+
+export async function addProtectedClient(
+  accountid: string,
+  group: number
+): Promise<AddProtectedResult> {
+  const res = await fetch(`${API_BASE}/protected-clients/add`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...authHeaders() },
+    body: JSON.stringify({ accountid, group }),
+  });
+  const json = await res.json();
+  if (!res.ok) throw new Error(json.detail || 'Request failed');
+  return json;
+}

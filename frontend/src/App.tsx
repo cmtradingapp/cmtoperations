@@ -23,6 +23,7 @@ import { ElenaAiUploadPage } from './pages/ElenaAiUploadPage';
 import { ElenaAiResultsPage } from './pages/ElenaAiResultsPage';
 import { ChallengesPage } from './pages/ChallengesPage';
 import { ActionBonusesPage } from './pages/admin/ActionBonusesPage';
+import { ProtectedClientsPage } from './pages/admin/ProtectedClientsPage';
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -40,6 +41,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/admin/challenges', label: 'Challenges', permission: 'challenges' },
       { to: '/admin/action-bonuses', label: 'Automatic Bonus', permission: 'action-bonuses' },
       { to: '/admin/elena-ai-results', label: 'Elena AI Results', permission: 'elena-ai-results' },
+      { to: '/admin/protected-clients', label: 'Protected Clients', permission: 'protected-clients' },
     ],
   },
   {
@@ -76,6 +78,7 @@ const ROUTES: { path: string; title: string; element: ReactNode; permission?: st
   { path: '/batch-call', title: 'Batch Call from File', element: <BatchCallPage />, permission: 'batch-call' },
   { path: '/elena-ai/upload-campaign', title: 'Upload to Campaign', element: <ElenaAiUploadPage />, permission: 'elena-ai-upload' },
   { path: '/admin/elena-ai-results', title: 'Elena AI Results', element: <ElenaAiResultsPage />, permission: 'elena-ai-results' },
+  { path: '/admin/protected-clients', title: 'Protected Clients', element: <ProtectedClientsPage />, permission: 'protected-clients' },
 ];
 
 // ---------------------------------------------------------------------------
