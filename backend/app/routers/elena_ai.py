@@ -231,123 +231,141 @@ def _safe(val: Any) -> str | None:
     return s or None
 
 
+async def _sync_campaign(
+    http_client, campaign_id: str, label: str | None,
+    per_page: int, max_pages: int, queue: asyncio.Queue,
+) -> None:
+    """Sync a single campaign, pushing SSE event strings into queue. Puts None when done."""
+    campaign_name = label or campaign_id
+
+    await queue.put(_sse("campaign_start", {"campaign_id": campaign_id, "label": campaign_name}))
+
+    try:
+        resp = await http_client.get(
+            f"{SQUARETALK_BASE_URL}/{campaign_id}",
+            headers={"Authorization": SQUARETALK_API_TOKEN},
+            timeout=15.0,
+        )
+        if resp.status_code == 200:
+            campaign_name = resp.json().get("name") or campaign_name
+    except Exception as e:
+        logger.warning("Elena AI | cannot fetch campaign name %s: %s", campaign_id, e)
+
+    cam_totals = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
+    page = 0
+    while True:
+        page += 1
+        try:
+            resp = await http_client.get(
+                f"{SQUARETALK_BASE_URL}/{campaign_id}/calls",
+                params={"page": page, "perPage": per_page},
+                headers={"Authorization": SQUARETALK_API_TOKEN},
+                timeout=30.0,
+            )
+            if resp.status_code != 200:
+                await queue.put(_sse("page_error", {
+                    "campaign_id": campaign_id, "page": page,
+                    "reason": f"HTTP {resp.status_code}",
+                }))
+                break
+
+            raw = resp.json()
+            if isinstance(raw, list):
+                calls = raw
+            elif isinstance(raw, dict):
+                calls = raw.get("data") or raw.get("calls") or raw.get("items") or []
+            else:
+                calls = []
+
+            if not calls:
+                break
+
+            page_rows = []
+            page_errors = 0
+            for call in calls:
+                try:
+                    call_id = _safe(call.get("id"))
+                    if not call_id:
+                        page_errors += 1
+                        continue
+                    user_id = _safe((call.get("promptVars") or {}).get("additionalProp1"))
+                    goal_reached = 1 if (call.get("goal") or {}).get("reached") else 0
+                    call_status = _safe(call.get("status"))
+                    duration = call.get("duration") or 0
+                    updated_at = _safe(call.get("updatedAt"))
+                    created_at = _safe(call.get("createdAt"))
+                    page_rows.append((call_id, user_id, campaign_name, duration,
+                                      created_at, call_status, goal_reached, updated_at))
+                except Exception as e:
+                    logger.warning("Elena AI | parse call error: %s", e)
+                    page_errors += 1
+
+            try:
+                page_inserted, page_skipped = await batch_sync_page(page_rows)
+            except Exception as e:
+                logger.warning("Elena AI | batch_sync_page error page %d: %s", page, e)
+                page_inserted, page_skipped = 0, 0
+                page_errors += len(page_rows)
+
+            cam_totals["fetched"] += len(calls)
+            cam_totals["inserted"] += page_inserted
+            cam_totals["skipped"] += page_skipped
+            cam_totals["errors"] += page_errors
+
+            await queue.put(_sse("page_progress", {
+                "campaign_id": campaign_id,
+                "page": page,
+                "page_fetched": len(calls),
+                "page_inserted": page_inserted,
+                "page_skipped": page_skipped,
+                "page_errors": page_errors,
+                "total_fetched": cam_totals["fetched"],
+                "total_inserted": cam_totals["inserted"],
+                "total_skipped": cam_totals["skipped"],
+                "total_errors": cam_totals["errors"],
+            }))
+
+            if len(calls) < per_page:
+                break
+            if max_pages > 0 and page >= max_pages:
+                break
+
+        except Exception as e:
+            await queue.put(_sse("page_error", {"campaign_id": campaign_id, "page": page, "reason": str(e)}))
+            cam_totals["errors"] += 1
+            break
+
+    await queue.put(_sse("campaign_done", {"campaign_id": campaign_id, "label": label or campaign_id, **cam_totals}))
+    await queue.put(None)  # sentinel — this campaign finished
+
+
 async def _stream_sync(http_client, configs: list, per_page: int = 300, max_pages: int = 0) -> AsyncGenerator[str, None]:
     """
-    Generator that yields SSE events while syncing each campaign.
+    Yields SSE events while syncing ALL campaigns concurrently.
     Events: campaign_start | page_progress | campaign_done | complete | error
     """
     grand_total = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
+    queue: asyncio.Queue = asyncio.Queue()
 
+    # Launch all campaigns in parallel
     for campaign_id, label in configs:
-        campaign_name = label or campaign_id
+        asyncio.create_task(_sync_campaign(http_client, campaign_id, label, per_page, max_pages, queue))
 
-        yield _sse("campaign_start", {"campaign_id": campaign_id, "label": label or campaign_id})
-
-        # Fetch campaign name from SquareTalk
+    remaining = len(configs)
+    while remaining > 0:
+        item = await queue.get()
+        if item is None:
+            remaining -= 1
+            continue
+        # Accumulate totals from campaign_done events
         try:
-            resp = await http_client.get(
-                f"{SQUARETALK_BASE_URL}/{campaign_id}",
-                headers={"Authorization": SQUARETALK_API_TOKEN},
-                timeout=15.0,
-            )
-            if resp.status_code == 200:
-                campaign_name = resp.json().get("name") or campaign_name
-        except Exception as e:
-            logger.warning("Elena AI | cannot fetch campaign name %s: %s", campaign_id, e)
-
-        cam_totals = {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0}
-
-        page = 0
-        while True:
-            page += 1
-            try:
-                resp = await http_client.get(
-                    f"{SQUARETALK_BASE_URL}/{campaign_id}/calls",
-                    params={"page": page, "perPage": per_page},
-                    headers={"Authorization": SQUARETALK_API_TOKEN},
-                    timeout=30.0,
-                )
-                if resp.status_code != 200:
-                    yield _sse("page_error", {
-                        "campaign_id": campaign_id, "page": page,
-                        "reason": f"HTTP {resp.status_code}",
-                    })
-                    break
-
-                raw = resp.json()
-                if isinstance(raw, list):
-                    calls = raw
-                elif isinstance(raw, dict):
-                    calls = raw.get("data") or raw.get("calls") or raw.get("items") or []
-                else:
-                    calls = []
-
-                if not calls:
-                    break  # No more pages
-
-                # Build rows for batch processing — skip calls with no ID
-                page_rows = []
-                page_errors = 0
-                for call in calls:
-                    try:
-                        call_id = _safe(call.get("id"))
-                        if not call_id:
-                            page_errors += 1
-                            continue
-                        user_id = _safe((call.get("promptVars") or {}).get("additionalProp1"))
-                        goal_reached = 1 if (call.get("goal") or {}).get("reached") else 0
-                        call_status = _safe(call.get("status"))
-                        duration = call.get("duration") or 0
-                        updated_at = _safe(call.get("updatedAt"))
-                        created_at = _safe(call.get("createdAt"))
-                        page_rows.append((call_id, user_id, campaign_name, duration,
-                                          created_at, call_status, goal_reached, updated_at))
-                    except Exception as e:
-                        logger.warning("Elena AI | parse call error: %s", e)
-                        page_errors += 1
-
-                # One MSSQL round-trip for the whole page
-                try:
-                    page_inserted, page_skipped = await batch_sync_page(page_rows)
-                except Exception as e:
-                    logger.warning("Elena AI | batch_sync_page error page %d: %s", page, e)
-                    page_inserted, page_skipped = 0, 0
-                    page_errors += len(page_rows)
-
-                cam_totals["fetched"] += len(calls)
-                cam_totals["inserted"] += page_inserted
-                cam_totals["skipped"] += page_skipped
-                cam_totals["errors"] += page_errors
-
-                yield _sse("page_progress", {
-                    "campaign_id": campaign_id,
-                    "page": page,
-                    "page_fetched": len(calls),
-                    "page_inserted": page_inserted,
-                    "page_skipped": page_skipped,
-                    "page_errors": page_errors,
-                    "total_fetched": cam_totals["fetched"],
-                    "total_inserted": cam_totals["inserted"],
-                    "total_skipped": cam_totals["skipped"],
-                    "total_errors": cam_totals["errors"],
-                })
-
-                # Stop if last page (fewer results than requested)
-                if len(calls) < per_page:
-                    break
-                # Stop if max_pages limit reached (0 = unlimited)
-                if max_pages > 0 and page >= max_pages:
-                    break
-
-            except Exception as e:
-                yield _sse("page_error", {"campaign_id": campaign_id, "page": page, "reason": str(e)})
-                cam_totals["errors"] += 1
-                break
-
-        for k in grand_total:
-            grand_total[k] += cam_totals[k]
-
-        yield _sse("campaign_done", {"campaign_id": campaign_id, "label": label or campaign_id, **cam_totals})
+            data = json.loads(item[len("data: "):].strip())
+            if data.get("type") == "campaign_done":
+                for k in grand_total:
+                    grand_total[k] += data.get(k, 0)
+        except Exception:
+            pass
+        yield item
 
     yield _sse("complete", grand_total)
 
