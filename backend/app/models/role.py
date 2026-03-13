@@ -16,15 +16,20 @@ ALL_PAGES = [
     "client-scoring",
     "retention-dial",
     "elena-ai-upload",
+    "elena-ai-results",
     # CLAUD-154: Additional pages that exist in the system
     "retention_grid_export",
     "users",
     "roles",
+    "permissions",
+    "integrations",
     "data-sync",
     "challenges",
     "action-bonuses",
     # CLAUD-156: Agent Activity page
     "agent_activity",
+    # Protected Clients
+    "protected-clients",
 ]
 
 
