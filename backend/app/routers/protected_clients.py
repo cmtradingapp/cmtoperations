@@ -170,6 +170,26 @@ async def add_protected_client(
     }
 
 
+@router.get("/protected-clients/lookup/{accountid}")
+async def lookup_protected_client(accountid: str) -> dict:
+    """Public endpoint — no auth required. Returns protection status for a given accountid."""
+    rows = await execute_query(
+        """
+        SELECT active, count_of_trades, retention_promo_group,
+               cash_bonus_left_new, dateadded
+        FROM [dbo].[accounts_protected_trades]
+        WHERE accountid = ?
+        """,
+        (accountid,),
+    )
+    if not rows:
+        return {"found": False}
+    r = dict(rows[0])
+    if hasattr(r.get("dateadded"), "isoformat"):
+        r["dateadded"] = r["dateadded"].isoformat()
+    return {"found": True, **r}
+
+
 async def expire_protected_clients() -> None:
     """Deactivate protected clients that have hit their group's limits.
 
