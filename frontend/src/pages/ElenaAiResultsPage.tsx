@@ -128,6 +128,27 @@ export function ElenaAiResultsPage() {
 
   useEffect(() => { loadConfigs(); }, []);
 
+  // ── Reconnect to any running background sync on mount ──────────────
+  useEffect(() => {
+    const savedTaskId = sessionStorage.getItem('syncTaskId');
+    if (!savedTaskId) return;
+    // Check if the task is still known to the server
+    fetch(`${API_BASE}/elena-ai/sync-active`, { headers: authHeaders() })
+      .then(r => r.json())
+      .then(d => {
+        if (d.task_id === savedTaskId && (d.status === 'running' || d.status === 'done')) {
+          // Reconnect/replay
+          setSyncing(d.status === 'running');
+          setSyncDone(d.status === 'done');
+          connectToTask(savedTaskId);
+        } else {
+          sessionStorage.removeItem('syncTaskId');
+        }
+      })
+      .catch(() => sessionStorage.removeItem('syncTaskId'));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const addConfig = async () => {
     if (!newCampaignId.trim()) return;
     setConfigError('');
@@ -158,25 +179,17 @@ export function ElenaAiResultsPage() {
 
   // ── Sync via SSE ───────────────────────────────────────────────────
 
-  const startSync = () => {
-    if (syncing) return;
-    if (configs.length === 0) { setConfigError('Add at least one campaign first.'); return; }
-
-    setSyncing(true);
-    setSyncDone(false);
-    setGrandTotal(null);
-    setCampaignProgress({});
-    setConfigError('');
-
-    // Build URL with auth token as query param (EventSource doesn't support custom headers)
+  const connectToTask = (taskId: string) => {
+    esRef.current?.close();
     const auth = JSON.parse(localStorage.getItem('auth') || '{}');
     const token = auth?.state?.token || '';
-    const url = `${API_BASE}/elena-ai/sync-stream?token=${encodeURIComponent(token)}&per_page=${perPage}&max_pages=${maxPages}`;
+    const url = `${API_BASE}/elena-ai/sync-stream?token=${encodeURIComponent(token)}&task_id=${encodeURIComponent(taskId)}`;
 
     const es = new EventSource(url);
     esRef.current = es;
 
     es.onmessage = (e) => {
+      if (e.data === '') return; // ping comment line
       try {
         const data = JSON.parse(e.data);
 
@@ -217,6 +230,7 @@ export function ElenaAiResultsPage() {
           setGrandTotal({ fetched: data.fetched, inserted: data.inserted, skipped: data.skipped, errors: data.errors });
           setSyncing(false);
           setSyncDone(true);
+          sessionStorage.removeItem('syncTaskId');
           es.close();
         } else if (data.type === 'page_error') {
           setCampaignProgress(prev => ({
@@ -237,10 +251,37 @@ export function ElenaAiResultsPage() {
     };
   };
 
+  const startSync = async () => {
+    if (syncing) return;
+    if (configs.length === 0) { setConfigError('Add at least one campaign first.'); return; }
+
+    setSyncing(true);
+    setSyncDone(false);
+    setGrandTotal(null);
+    setCampaignProgress({});
+    setConfigError('');
+
+    try {
+      const res = await fetch(
+        `${API_BASE}/elena-ai/sync-start?per_page=${perPage}&max_pages=${maxPages}`,
+        { method: 'POST', headers: authHeaders() }
+      );
+      if (!res.ok) throw new Error(`${res.status}`);
+      const { task_id } = await res.json();
+      if (!task_id) { setSyncing(false); setConfigError('No campaigns configured on server.'); return; }
+      sessionStorage.setItem('syncTaskId', task_id);
+      connectToTask(task_id);
+    } catch (e: any) {
+      setSyncing(false);
+      setConfigError(`Failed to start sync: ${e.message}`);
+    }
+  };
+
   const stopSync = () => {
     esRef.current?.close();
     setSyncing(false);
     setSyncDone(true);
+    // Note: background task on server keeps running; user can reconnect
   };
 
   // ── Load results ───────────────────────────────────────────────────
@@ -432,13 +473,14 @@ export function ElenaAiResultsPage() {
                 </div>
               </div>
 
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 {syncing && (
                   <button
                     onClick={stopSync}
                     className="px-4 py-2 bg-red-600 text-white rounded-md text-sm font-medium hover:bg-red-700"
+                    title="Disconnects your view — sync keeps running on server"
                   >
-                    Stop
+                    Stop watching
                   </button>
                 )}
                 <button
@@ -454,6 +496,20 @@ export function ElenaAiResultsPage() {
                   )}
                   {syncing ? 'Syncing...' : 'Start Sync'}
                 </button>
+                {!syncing && !!sessionStorage.getItem('syncTaskId') && (
+                  <button
+                    onClick={() => {
+                      const taskId = sessionStorage.getItem('syncTaskId');
+                      if (!taskId) return;
+                      setSyncing(true);
+                      setSyncDone(false);
+                      connectToTask(taskId);
+                    }}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700"
+                  >
+                    Reconnect
+                  </button>
+                )}
               </div>
             </div>
 

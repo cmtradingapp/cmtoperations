@@ -3,6 +3,7 @@
 import asyncio
 import json
 import logging
+import uuid
 from typing import Any, AsyncGenerator, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -22,6 +23,26 @@ from app.database import execute_query as mssql_query
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["elena-ai"])
+
+# ── Background sync task registry ────────────────────────────────────────────
+# task_id -> { "status": "running"|"done"|"error", "events": [str, ...] }
+_sync_tasks: dict[str, dict] = {}
+
+def _cleanup_old_sync_tasks() -> None:
+    """Keep at most 5 finished tasks to prevent unbounded growth."""
+    done = [tid for tid, t in _sync_tasks.items() if t["status"] != "running"]
+    for tid in done[:-5]:
+        del _sync_tasks[tid]
+
+async def _run_sync_background(task_id: str, http_client, configs: list, per_page: int, max_pages: int) -> None:
+    task = _sync_tasks[task_id]
+    try:
+        async for chunk in _stream_sync(http_client, configs, per_page=per_page, max_pages=max_pages):
+            task["events"].append(chunk)
+        task["status"] = "done"
+    except Exception as e:
+        task["events"].append(_sse("error", {"message": str(e)}))
+        task["status"] = "error"
 
 SQUARETALK_API_TOKEN = "155f6364-3b95-4ac9-b9c6-876dd59aa504"
 SQUARETALK_BASE_URL = "https://ai.agent.squaretalk.com/api/campaigns"
@@ -331,20 +352,14 @@ async def _stream_sync(http_client, configs: list, per_page: int = 300, max_page
     yield _sse("complete", grand_total)
 
 
-@router.get("/elena-ai/sync-stream")
-async def sync_stream(
+@router.post("/elena-ai/sync-start")
+async def sync_start(
     request: Request,
-    token: str = Query(...),
     per_page: int = Query(300, ge=1, le=1000),
-    max_pages: int = Query(0, ge=0),  # 0 = unlimited
+    max_pages: int = Query(0, ge=0),
+    current_user=Depends(get_current_user),
 ):
-    """SSE endpoint — streams real-time sync progress. Auth via ?token= query param."""
-    # Validate token (EventSource can't send headers)
-    try:
-        decode_jwt(token)
-    except Exception:
-        raise HTTPException(status_code=401, detail="Invalid token")
-
+    """Start a background sync task. Returns task_id to follow via /sync-stream/{task_id}."""
     async with AsyncSessionLocal() as db:
         rows = await db.execute(
             text("SELECT campaign_id, label FROM elena_ai_campaign_configs ORDER BY created_at ASC")
@@ -352,14 +367,57 @@ async def sync_stream(
         configs = rows.fetchall()
 
     if not configs:
-        async def _empty():
-            yield _sse("complete", {"fetched": 0, "inserted": 0, "skipped": 0, "errors": 0,
-                                    "message": "No campaigns configured"})
-        return StreamingResponse(_empty(), media_type="text/event-stream")
+        return {"task_id": None, "message": "No campaigns configured"}
 
+    _cleanup_old_sync_tasks()
+    task_id = str(uuid.uuid4())
+    _sync_tasks[task_id] = {"status": "running", "events": []}
     http_client = request.app.state.http_client
+    asyncio.create_task(_run_sync_background(task_id, http_client, list(configs), per_page, max_pages))
+    return {"task_id": task_id, "status": "running"}
+
+
+@router.get("/elena-ai/sync-active")
+async def sync_active(current_user=Depends(get_current_user)):
+    """Returns the most recent sync task (running or finished)."""
+    if not _sync_tasks:
+        return {"task_id": None, "status": None}
+    task_id, task = list(_sync_tasks.items())[-1]
+    return {"task_id": task_id, "status": task["status"], "event_count": len(task["events"])}
+
+
+@router.get("/elena-ai/sync-stream")
+async def sync_stream(
+    request: Request,
+    token: str = Query(...),
+    task_id: str = Query(...),
+):
+    """SSE endpoint — replays stored events then streams live. Auth via ?token= query param."""
+    try:
+        decode_jwt(token)
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid token")
+
+    task = _sync_tasks.get(task_id)
+    if not task:
+        raise HTTPException(status_code=404, detail="Sync task not found")
+
+    async def stream():
+        offset = 0
+        while True:
+            events = task["events"]
+            while offset < len(events):
+                yield events[offset]
+                offset += 1
+            # Task finished and all events sent — we're done
+            if task["status"] != "running" and offset >= len(events):
+                break
+            # Poll for new events every 300ms; send a keepalive ping while waiting
+            await asyncio.sleep(0.3)
+            yield ": ping\n\n"
+
     return StreamingResponse(
-        _stream_sync(http_client, configs, per_page=per_page, max_pages=max_pages),
+        stream(),
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )
