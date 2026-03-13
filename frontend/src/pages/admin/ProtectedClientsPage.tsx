@@ -1,32 +1,119 @@
-import { useState } from 'react';
-import { addProtectedClient, type AddProtectedResult } from '../../api/protectedClients';
+import { useEffect, useState } from 'react';
+import {
+  addProtectedClient,
+  fetchProtectedClients,
+  fetchProtectionGroups,
+  type AddProtectedResult,
+} from '../../api/protectedClients';
 
 const GROUPS = [32, 33, 34] as const;
 type Group = (typeof GROUPS)[number];
 
-const TABS = ['Add Protected Client'] as const;
+const TABS = ['Add Protected Client', 'Clients in Protected', 'Protection Groups'] as const;
+type Tab = (typeof TABS)[number];
+
+// ── Generic read-only table ────────────────────────────────────────────────
+
+function DataTable({ rows, loading, error }: {
+  rows: Record<string, unknown>[];
+  loading: boolean;
+  error: string;
+}) {
+  if (loading) return <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">Loading…</p>;
+  if (error) return <p className="text-sm text-red-500 py-6 text-center">{error}</p>;
+  if (!rows.length) return <p className="text-sm text-gray-500 dark:text-gray-400 py-6 text-center">No records found.</p>;
+
+  const cols = Object.keys(rows[0]);
+
+  return (
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <table className="min-w-full text-xs">
+        <thead className="bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+          <tr>
+            {cols.map((col) => (
+              <th
+                key={col}
+                className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap"
+              >
+                {col}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+          {rows.map((row, i) => (
+            <tr key={i} className="bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors">
+              {cols.map((col) => (
+                <td key={col} className="px-3 py-2 text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                  {row[col] === null || row[col] === undefined ? (
+                    <span className="text-gray-400">—</span>
+                  ) : String(row[col])}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+// ── Page ──────────────────────────────────────────────────────────────────
 
 export function ProtectedClientsPage() {
-  const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>(TABS[0]);
+  const [activeTab, setActiveTab] = useState<Tab>(TABS[0]);
+
+  // Add form state
   const [accountid, setAccountid] = useState('');
   const [group, setGroup] = useState<Group>(32);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<AddProtectedResult | null>(null);
   const [error, setError] = useState('');
 
+  // Clients in Protected
+  const [clientRows, setClientRows] = useState<Record<string, unknown>[]>([]);
+  const [clientsLoading, setClientsLoading] = useState(false);
+  const [clientsError, setClientsError] = useState('');
+
+  // Protection Groups
+  const [groupRows, setGroupRows] = useState<Record<string, unknown>[]>([]);
+  const [groupsLoading, setGroupsLoading] = useState(false);
+  const [groupsError, setGroupsError] = useState('');
+
+  useEffect(() => {
+    if (activeTab === 'Clients in Protected' && !clientRows.length && !clientsLoading) {
+      setClientsLoading(true);
+      setClientsError('');
+      fetchProtectedClients()
+        .then(setClientRows)
+        .catch((e) => setClientsError(e.message))
+        .finally(() => setClientsLoading(false));
+    }
+    if (activeTab === 'Protection Groups' && !groupRows.length && !groupsLoading) {
+      setGroupsLoading(true);
+      setGroupsError('');
+      fetchProtectionGroups()
+        .then(setGroupRows)
+        .catch((e) => setGroupsError(e.message))
+        .finally(() => setGroupsLoading(false));
+    }
+  }, [activeTab]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     const id = accountid.trim();
     if (!id) { setError('Account ID is required'); return; }
-
     setLoading(true);
     setResult(null);
     setError('');
-
     try {
       const res = await addProtectedClient(id, group);
       setResult(res);
-      if (res.status === 'success') setAccountid('');
+      if (res.status === 'success') {
+        setAccountid('');
+        // Invalidate clients list so it refreshes next time
+        setClientRows([]);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'An unexpected error occurred');
     } finally {
@@ -39,21 +126,11 @@ export function ProtectedClientsPage() {
     already_protected: 'bg-yellow-50 border-yellow-200 text-yellow-800 dark:bg-yellow-900/20 dark:border-yellow-700 dark:text-yellow-300',
     client_not_found: 'bg-red-50 border-red-200 text-red-800 dark:bg-red-900/20 dark:border-red-700 dark:text-red-300',
   };
-
-  const statusIcons: Record<string, string> = {
-    success: '✓',
-    already_protected: '⚠',
-    client_not_found: '✗',
-  };
-
-  const statusLabels: Record<string, string> = {
-    success: 'Success',
-    already_protected: 'Already Protected',
-    client_not_found: 'Client Not Found',
-  };
+  const statusIcons: Record<string, string> = { success: '✓', already_protected: '⚠', client_not_found: '✗' };
+  const statusLabels: Record<string, string> = { success: 'Success', already_protected: 'Already Protected', client_not_found: 'Client Not Found' };
 
   return (
-    <div className="max-w-2xl mx-auto space-y-6">
+    <div className="space-y-6">
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="-mb-px flex gap-4">
@@ -61,7 +138,7 @@ export function ProtectedClientsPage() {
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors ${
+              className={`py-2 px-1 border-b-2 text-sm font-medium transition-colors whitespace-nowrap ${
                 activeTab === tab
                   ? 'border-blue-500 text-blue-600 dark:text-blue-400'
                   : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300 dark:text-gray-400 dark:hover:text-gray-200'
@@ -73,25 +150,19 @@ export function ProtectedClientsPage() {
         </nav>
       </div>
 
-      {/* Tab Content */}
+      {/* ── Tab: Add Protected Client ── */}
       {activeTab === 'Add Protected Client' && (
-        <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
+        <div className="max-w-2xl bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-6 space-y-6">
           <div>
-            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">
-              Add Client to Protected Group
-            </h2>
+            <h2 className="text-base font-semibold text-gray-900 dark:text-gray-100">Add Client to Protected Group</h2>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
-              Assigns a client to a retention protection group in the system and sends an Optimove notification.
+              Assigns a client to a retention protection group and sends an Optimove notification.
             </p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
-            {/* Account ID */}
             <div>
-              <label
-                htmlFor="accountid"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
+              <label htmlFor="accountid" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Account ID
               </label>
               <input
@@ -105,12 +176,8 @@ export function ProtectedClientsPage() {
               />
             </div>
 
-            {/* Group */}
             <div>
-              <label
-                htmlFor="group"
-                className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1"
-              >
+              <label htmlFor="group" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Protection Group
               </label>
               <select
@@ -120,20 +187,12 @@ export function ProtectedClientsPage() {
                 disabled={loading}
                 className="w-full px-3 py-2 rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent disabled:opacity-50"
               >
-                {GROUPS.map((g) => (
-                  <option key={g} value={g}>
-                    Group {g}
-                  </option>
-                ))}
+                {GROUPS.map((g) => <option key={g} value={g}>Group {g}</option>)}
               </select>
             </div>
 
-            {/* Error */}
-            {error && (
-              <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-            )}
+            {error && <p className="text-sm text-red-600 dark:text-red-400">{error}</p>}
 
-            {/* Submit */}
             <button
               type="submit"
               disabled={loading || !accountid.trim()}
@@ -143,35 +202,22 @@ export function ProtectedClientsPage() {
             </button>
           </form>
 
-          {/* Result */}
           {result && (
             <div className={`rounded-md border p-4 ${statusColors[result.status] ?? ''}`}>
               <div className="flex items-start gap-3">
-                <span className="text-lg leading-none mt-0.5">
-                  {statusIcons[result.status]}
-                </span>
+                <span className="text-lg leading-none mt-0.5">{statusIcons[result.status]}</span>
                 <div className="space-y-1 min-w-0">
                   <p className="font-semibold text-sm">
                     {statusLabels[result.status] ?? result.status}
-                    {result.action && (
-                      <span className="ml-2 font-normal opacity-75">
-                        — client {result.action}
-                      </span>
-                    )}
+                    {result.action && <span className="ml-2 font-normal opacity-75">— client {result.action}</span>}
                   </p>
-                  {result.message && (
-                    <p className="text-sm opacity-90">{result.message}</p>
-                  )}
+                  {result.message && <p className="text-sm opacity-90">{result.message}</p>}
                   {result.status === 'success' && (
                     <dl className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-xs opacity-80">
-                      <dt className="font-medium">Account ID</dt>
-                      <dd>{result.accountid}</dd>
-                      <dt className="font-medium">Group</dt>
-                      <dd>{result.group}</dd>
-                      <dt className="font-medium">MT4 Login</dt>
-                      <dd>{result.mt4login || '—'}</dd>
-                      <dt className="font-medium">Trading Account ID</dt>
-                      <dd>{result.trading_account_id || '—'}</dd>
+                      <dt className="font-medium">Account ID</dt><dd>{result.accountid}</dd>
+                      <dt className="font-medium">Group</dt><dd>{result.group}</dd>
+                      <dt className="font-medium">MT4 Login</dt><dd>{result.mt4login || '—'}</dd>
+                      <dt className="font-medium">Trading Account ID</dt><dd>{result.trading_account_id || '—'}</dd>
                     </dl>
                   )}
                   {result.status === 'already_protected' && result.current_group && (
@@ -181,6 +227,58 @@ export function ProtectedClientsPage() {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Tab: Clients in Protected ── */}
+      {activeTab === 'Clients in Protected' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              Clients in groups 32, 33, 34 — ordered by date added
+            </p>
+            <button
+              onClick={() => {
+                setClientRows([]);
+                setClientsLoading(true);
+                setClientsError('');
+                fetchProtectedClients()
+                  .then(setClientRows)
+                  .catch((e) => setClientsError(e.message))
+                  .finally(() => setClientsLoading(false));
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+          <DataTable rows={clientRows} loading={clientsLoading} error={clientsError} />
+        </div>
+      )}
+
+      {/* ── Tab: Protection Groups ── */}
+      {activeTab === 'Protection Groups' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
+              All retention protection groups
+            </p>
+            <button
+              onClick={() => {
+                setGroupRows([]);
+                setGroupsLoading(true);
+                setGroupsError('');
+                fetchProtectionGroups()
+                  .then(setGroupRows)
+                  .catch((e) => setGroupsError(e.message))
+                  .finally(() => setGroupsLoading(false));
+              }}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+          <DataTable rows={groupRows} loading={groupsLoading} error={groupsError} />
         </div>
       )}
     </div>

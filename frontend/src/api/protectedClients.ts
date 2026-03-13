@@ -30,3 +30,15 @@ export async function addProtectedClient(
   if (!res.ok) throw new Error(json.detail || 'Request failed');
   return json;
 }
+
+export async function fetchProtectedClients(): Promise<Record<string, unknown>[]> {
+  const res = await fetch(`${API_BASE}/protected-clients/list`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch protected clients');
+  return res.json();
+}
+
+export async function fetchProtectionGroups(): Promise<Record<string, unknown>[]> {
+  const res = await fetch(`${API_BASE}/protected-clients/groups`, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch protection groups');
+  return res.json();
+}

@@ -166,3 +166,52 @@ async def add_protected_client(
         "mt4login": mt4login,
         "trading_account_id": trading_account_id,
     }
+
+
+@router.get("/protected-clients/list")
+async def list_protected_clients(
+    _user=Depends(_require_protected_clients),
+) -> list:
+    rows = await execute_query(
+        """
+        SELECT accountid, count_of_trades, days_from_ftc, mt4login,
+               trading_account_id, retention_promo_group, cash_bonus_left_new,
+               active, dateadded
+        FROM [dbo].[accounts_protected_trades]
+        WHERE retention_promo_group IN (32, 33, 34)
+        ORDER BY dateadded DESC
+        """,
+        (),
+    )
+    # Serialize date objects to string
+    result = []
+    for row in rows:
+        r = dict(row)
+        if hasattr(r.get("dateadded"), "isoformat"):
+            r["dateadded"] = r["dateadded"].isoformat()
+        result.append(r)
+    return result
+
+
+@router.get("/protected-clients/groups")
+async def list_protection_groups(
+    _user=Depends(_require_protected_clients),
+) -> list:
+    rows = await execute_query(
+        """
+        SELECT TOP (1000) [id], [days_from_ftd], [max_amount_bonus], [max_total_amount],
+               [count_of_trades], [min_net_deposit], [max_net_deposit], [is_promo],
+               [promo_start_date], [promo_end_date], [promo_type],
+               [max_percentage_bonus], [payback_method]
+        FROM [dbo].[retention_promo_groups]
+        """,
+        (),
+    )
+    result = []
+    for row in rows:
+        r = dict(row)
+        for key in ("promo_start_date", "promo_end_date"):
+            if hasattr(r.get(key), "isoformat"):
+                r[key] = r[key].isoformat()
+        result.append(r)
+    return result
