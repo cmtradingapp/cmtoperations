@@ -43,7 +43,7 @@ from app.routers.saved_searches import router as saved_searches_router
 from app.routers.sendgrid_admin import router as sendgrid_router
 from app.routers.batch_calls import router as batch_calls_router
 from app.routers.agent_activity import router as agent_activity_router
-from app.routers.protected_clients import router as protected_clients_router
+from app.routers.protected_clients import router as protected_clients_router, expire_protected_clients
 from app.seed import seed_admin
 
 logging.basicConfig(level=logging.INFO)
@@ -1650,6 +1650,13 @@ async def lifespan(app: FastAPI):
         "interval",
         minutes=15,
         next_run_time=_t + timedelta(minutes=5),
+    )
+    # Protected clients expiry check — runs every 15 minutes
+    scheduler.add_job(
+        expire_protected_clients,
+        "interval",
+        minutes=15,
+        next_run_time=_t + timedelta(minutes=7),
     )
     scheduler.start()
     logger.info("ETL scheduler started — incremental sync every 30 min, vtiger/extensions hourly full refresh, daily full sync at midnight")

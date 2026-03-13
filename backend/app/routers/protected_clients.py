@@ -168,6 +168,36 @@ async def add_protected_client(
     }
 
 
+async def expire_protected_clients() -> None:
+    """Deactivate protected clients that have hit their group's limits.
+
+    Runs every 15 minutes via APScheduler. Conditions (any one triggers deactivation):
+    - count_of_trades reached the group limit (retention_promo_groups.count_of_trades)
+    - cash_bonus_left_new reached the group max bonus (retention_promo_groups.max_amount_bonus)
+    - dateadded + days_from_ftd days has passed
+    """
+    try:
+        rowcount = await execute_write(
+            """
+            UPDATE apt
+            SET apt.active = 0
+            FROM [dbo].[accounts_protected_trades] apt
+            JOIN [dbo].[retention_promo_groups] rpg ON rpg.id = apt.retention_promo_group
+            WHERE apt.active = 1
+              AND apt.retention_promo_group IN (32, 33, 34)
+              AND (
+                apt.count_of_trades >= rpg.count_of_trades
+                OR apt.cash_bonus_left_new >= rpg.max_amount_bonus
+                OR DATEDIFF(day, apt.dateadded, GETDATE()) >= rpg.days_from_ftd
+              )
+            """,
+            (),
+        )
+        logger.info("[ProtectedClients] expire_protected_clients: deactivated %d row(s)", rowcount)
+    except Exception as e:
+        logger.error("[ProtectedClients] expire_protected_clients failed: %s", e)
+
+
 @router.get("/protected-clients/list")
 async def list_protected_clients(
     _user=Depends(_require_protected_clients),

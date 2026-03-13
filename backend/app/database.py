@@ -22,15 +22,17 @@ async def execute_query(query: str, params: tuple = ()) -> list[dict[str, Any]]:
     return await asyncio.to_thread(_execute_query_sync, query, params)
 
 
-def _execute_write_sync(query: str, params: tuple) -> None:
+def _execute_write_sync(query: str, params: tuple) -> int:
     conn = pyodbc.connect(settings.mssql_connection_string)
     try:
         cursor = conn.cursor()
         cursor.execute(query, params)
+        rowcount = cursor.rowcount
         conn.commit()
+        return rowcount
     finally:
         conn.close()
 
 
-async def execute_write(query: str, params: tuple = ()) -> None:
-    await asyncio.to_thread(_execute_write_sync, query, params)
+async def execute_write(query: str, params: tuple = ()) -> int:
+    return await asyncio.to_thread(_execute_write_sync, query, params)
