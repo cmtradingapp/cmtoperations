@@ -40,6 +40,15 @@ export async function fetchProtectedClients(active?: number): Promise<Record<str
   return res.json();
 }
 
+export async function reactivateAll(): Promise<{ reactivated: number }> {
+  const res = await fetch(`${API_BASE}/protected-clients/reactivate-all`, {
+    method: 'POST',
+    headers: authHeaders(),
+  });
+  if (!res.ok) throw new Error('Failed to reactivate');
+  return res.json();
+}
+
 export async function fetchProtectionGroups(): Promise<Record<string, unknown>[]> {
   const res = await fetch(`${API_BASE}/protected-clients/groups`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch protection groups');

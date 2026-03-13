@@ -170,6 +170,17 @@ async def add_protected_client(
     }
 
 
+@router.post("/protected-clients/reactivate-all")
+async def reactivate_all_protected(
+    _user=Depends(_require_protected_clients),
+) -> dict:
+    n = await execute_write(
+        "UPDATE [dbo].[accounts_protected_trades] SET active = 1 WHERE retention_promo_group IN (32, 33, 34)",
+        (),
+    )
+    return {"reactivated": n}
+
+
 @router.get("/protected-clients/lookup/{accountid}")
 async def lookup_protected_client(accountid: str) -> dict:
     """Public endpoint — no auth required. Returns protection status for a given accountid."""

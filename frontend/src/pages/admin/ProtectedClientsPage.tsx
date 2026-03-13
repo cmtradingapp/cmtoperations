@@ -3,6 +3,7 @@ import {
   addProtectedClient,
   fetchProtectedClients,
   fetchProtectionGroups,
+  reactivateAll,
   type AddProtectedResult,
 } from '../../api/protectedClients';
 
@@ -257,12 +258,29 @@ export function ProtectedClientsPage() {
                 </button>
               ))}
             </div>
-            <button
-              onClick={() => loadClients(activeFilter)}
-              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
-            >
-              Refresh
-            </button>
+            <div className="flex items-center gap-3">
+              <button
+                onClick={async () => {
+                  if (!confirm('Set ALL clients in groups 32/33/34 to active?')) return;
+                  try {
+                    const r = await reactivateAll();
+                    alert(`Reactivated ${r.reactivated} client(s)`);
+                    loadClients(activeFilter);
+                  } catch (e: unknown) {
+                    alert(e instanceof Error ? e.message : 'Error');
+                  }
+                }}
+                className="px-3 py-1 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
+              >
+                Reactivate All
+              </button>
+              <button
+                onClick={() => loadClients(activeFilter)}
+                className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+              >
+                Refresh
+              </button>
+            </div>
           </div>
           <DataTable rows={clientRows} loading={clientsLoading} error={clientsError} />
         </div>
