@@ -40,8 +40,6 @@ const NAV_SECTIONS: NavSection[] = [
     items: [
       { to: '/admin/challenges', label: 'Challenges', permission: 'challenges' },
       { to: '/admin/action-bonuses', label: 'Automatic Bonus', permission: 'action-bonuses' },
-      { to: '/admin/elena-ai-results', label: 'Elena AI Results', permission: 'elena-ai-results' },
-      { to: '/admin/protected-clients', label: 'Protected Clients', permission: 'protected-clients' },
     ],
   },
   {
@@ -51,7 +49,19 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/call-history', label: 'Call History', permission: 'call-history' },
       { to: '/call-dashboard', label: 'AI Call Dashboard', permission: 'call-dashboard' },
       { to: '/batch-call', label: 'Batch Call from File', permission: 'batch-call' },
+    ],
+  },
+  {
+    title: 'Elena AI',
+    items: [
+      { to: '/admin/elena-ai-results', label: 'Elena AI Results', permission: 'elena-ai-results' },
       { to: '/elena-ai/upload-campaign', label: 'Upload to Campaign', permission: 'elena-ai-upload' },
+    ],
+  },
+  {
+    title: 'System',
+    items: [
+      { to: '/admin/protected-clients', label: 'Protected Clients', permission: 'protected-clients' },
     ],
   },
   {
