@@ -8,7 +8,7 @@ function authHeaders(): Record<string, string> {
 
 export interface AddProtectedResult {
   status: 'success' | 'already_protected' | 'client_not_found';
-  action?: 'added' | 'updated';
+  action?: 'added' | 'updated' | 'reactivated';
   accountid?: string;
   group?: number;
   mt4login?: string;
@@ -31,8 +31,11 @@ export async function addProtectedClient(
   return json;
 }
 
-export async function fetchProtectedClients(): Promise<Record<string, unknown>[]> {
-  const res = await fetch(`${API_BASE}/protected-clients/list`, { headers: authHeaders() });
+export async function fetchProtectedClients(active?: number): Promise<Record<string, unknown>[]> {
+  const url = active !== undefined
+    ? `${API_BASE}/protected-clients/list?active=${active}`
+    : `${API_BASE}/protected-clients/list`;
+  const res = await fetch(url, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch protected clients');
   return res.json();
 }

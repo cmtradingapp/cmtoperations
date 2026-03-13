@@ -74,20 +74,27 @@ export function ProtectedClientsPage() {
   const [clientRows, setClientRows] = useState<Record<string, unknown>[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
+  const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Protection Groups
   const [groupRows, setGroupRows] = useState<Record<string, unknown>[]>([]);
   const [groupsLoading, setGroupsLoading] = useState(false);
   const [groupsError, setGroupsError] = useState('');
 
+  const loadClients = (filter: 'all' | 'active' | 'inactive') => {
+    setClientsLoading(true);
+    setClientsError('');
+    setClientRows([]);
+    const param = filter === 'active' ? 1 : filter === 'inactive' ? 0 : undefined;
+    fetchProtectedClients(param)
+      .then(setClientRows)
+      .catch((e) => setClientsError(e.message))
+      .finally(() => setClientsLoading(false));
+  };
+
   useEffect(() => {
     if (activeTab === 'Clients in Protected' && !clientRows.length && !clientsLoading) {
-      setClientsLoading(true);
-      setClientsError('');
-      fetchProtectedClients()
-        .then(setClientRows)
-        .catch((e) => setClientsError(e.message))
-        .finally(() => setClientsLoading(false));
+      loadClients(activeFilter);
     }
     if (activeTab === 'Protection Groups' && !groupRows.length && !groupsLoading) {
       setGroupsLoading(true);
@@ -233,20 +240,25 @@ export function ProtectedClientsPage() {
       {/* ── Tab: Clients in Protected ── */}
       {activeTab === 'Clients in Protected' && (
         <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <p className="text-sm text-gray-500 dark:text-gray-400">
-              Clients in groups 32, 33, 34 — ordered by date added
-            </p>
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            {/* Filter buttons */}
+            <div className="flex gap-1">
+              {(['all', 'active', 'inactive'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => { setActiveFilter(f); loadClients(f); }}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    activeFilter === f
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
             <button
-              onClick={() => {
-                setClientRows([]);
-                setClientsLoading(true);
-                setClientsError('');
-                fetchProtectedClients()
-                  .then(setClientRows)
-                  .catch((e) => setClientsError(e.message))
-                  .finally(() => setClientsLoading(false));
-              }}
+              onClick={() => loadClients(activeFilter)}
               className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
             >
               Refresh

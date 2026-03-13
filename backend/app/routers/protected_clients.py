@@ -97,7 +97,7 @@ async def add_protected_client(
 
     # Step 2: Check MSSQL accounts_protected_trades
     existing = await execute_query(
-        "SELECT accountid, retention_promo_group FROM [dbo].[accounts_protected_trades] WHERE accountid = ?",
+        "SELECT accountid, retention_promo_group, active FROM [dbo].[accounts_protected_trades] WHERE accountid = ?",
         (req.accountid,),
     )
 
@@ -105,18 +105,20 @@ async def add_protected_client(
 
     if existing:
         current_group = existing[0].get("retention_promo_group")
-        if current_group in (32, 33, 34):
+        is_active = existing[0].get("active")
+        # Already protected with new group AND still active → skip
+        if current_group in (32, 33, 34) and is_active:
             return {
                 "status": "already_protected",
                 "message": f"Client is already protected with group {current_group}",
                 "current_group": current_group,
             }
-        # Route B: old group (1/2/3) — delete and re-insert
+        # Either old group (1/2/3) or inactive — delete and re-insert
         await execute_write(
             "DELETE FROM [dbo].[accounts_protected_trades] WHERE accountid = ?",
             (req.accountid,),
         )
-        action = "updated"
+        action = "reactivated" if not is_active else "updated"
     else:
         action = "added"
 
@@ -200,18 +202,24 @@ async def expire_protected_clients() -> None:
 
 @router.get("/protected-clients/list")
 async def list_protected_clients(
+    active: int | None = None,  # 1 = active only, 0 = inactive only, None = all
     _user=Depends(_require_protected_clients),
 ) -> list:
+    where = "WHERE retention_promo_group IN (32, 33, 34)"
+    params: tuple = ()
+    if active is not None:
+        where += " AND active = ?"
+        params = (active,)
     rows = await execute_query(
-        """
+        f"""
         SELECT accountid, count_of_trades, days_from_ftc, mt4login,
                trading_account_id, retention_promo_group, cash_bonus_left_new,
                active, dateadded
         FROM [dbo].[accounts_protected_trades]
-        WHERE retention_promo_group IN (32, 33, 34)
+        {where}
         ORDER BY dateadded DESC
         """,
-        (),
+        params,
     )
     # Serialize date objects to string
     result = []
