@@ -76,6 +76,8 @@ export function ProtectedClientsPage() {
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+  const [reactivating, setReactivating] = useState(false);
+  const [confirmReactivate, setConfirmReactivate] = useState(false);
 
   // Protection Groups
   const [groupRows, setGroupRows] = useState<Record<string, unknown>[]>([]);
@@ -259,21 +261,38 @@ export function ProtectedClientsPage() {
               ))}
             </div>
             <div className="flex items-center gap-3">
-              <button
-                onClick={async () => {
-                  if (!confirm('Set ALL clients in groups 32/33/34 to active?')) return;
-                  try {
-                    const r = await reactivateAll();
-                    alert(`Reactivated ${r.reactivated} client(s)`);
-                    loadClients(activeFilter);
-                  } catch (e: unknown) {
-                    alert(e instanceof Error ? e.message : 'Error');
-                  }
-                }}
-                className="px-3 py-1 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
-              >
-                Reactivate All
-              </button>
+              {confirmReactivate ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-gray-600 dark:text-gray-300">Reactivate all in groups 32/33/34?</span>
+                  <button
+                    disabled={reactivating}
+                    onClick={async () => {
+                      setReactivating(true);
+                      try {
+                        const r = await reactivateAll();
+                        setConfirmReactivate(false);
+                        loadClients(activeFilter);
+                        alert(`Reactivated ${r.reactivated} client(s)`);
+                      } catch (e: unknown) {
+                        alert(e instanceof Error ? e.message : 'Error');
+                      } finally {
+                        setReactivating(false);
+                      }
+                    }}
+                    className="px-2 py-1 rounded text-xs bg-green-600 hover:bg-green-700 text-white disabled:opacity-50"
+                  >
+                    {reactivating ? 'Working…' : 'Yes, confirm'}
+                  </button>
+                  <button onClick={() => setConfirmReactivate(false)} className="text-xs text-gray-500 hover:underline">Cancel</button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setConfirmReactivate(true)}
+                  className="px-3 py-1 rounded-md text-xs font-medium bg-green-600 hover:bg-green-700 text-white transition-colors"
+                >
+                  Reactivate All
+                </button>
+              )}
               <button
                 onClick={() => loadClients(activeFilter)}
                 className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
