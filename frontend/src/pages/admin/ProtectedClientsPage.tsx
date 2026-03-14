@@ -27,14 +27,15 @@ function DataTable({ rows, loading, error }: {
   const cols = Object.keys(rows[0]);
 
   return (
-    <div className="overflow-x-auto overflow-y-auto max-h-[60vh] rounded-lg border border-gray-200 dark:border-gray-700">
+    <div className="overflow-x-auto rounded-lg border border-gray-200 dark:border-gray-700">
+      <div className="max-h-[60vh] overflow-y-auto">
       <table className="min-w-full text-xs">
-        <thead className="sticky top-0 z-10 bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <thead>
           <tr>
             {cols.map((col) => (
               <th
                 key={col}
-                className="px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap"
+                className="sticky top-0 z-10 px-3 py-2 text-left font-semibold text-gray-600 dark:text-gray-300 whitespace-nowrap bg-gray-50 dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700"
               >
                 {col}
               </th>
@@ -55,6 +56,7 @@ function DataTable({ rows, loading, error }: {
           ))}
         </tbody>
       </table>
+      </div>
     </div>
   );
 }

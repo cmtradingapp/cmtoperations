@@ -280,7 +280,8 @@ async def list_legacy_protected_clients(
                active, dateadded
         FROM [dbo].[accounts_protected_trades]
         {where}
-        ORDER BY dateadded DESC
+          AND dateadded IS NOT NULL
+        ORDER BY days_from_ftc ASC
         """,
         params,
     )
