@@ -19,7 +19,7 @@ from decimal import Decimal
 from typing import Any, Optional
 
 import httpx
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 
 from app.database import execute_query as mssql_query
 from pydantic import BaseModel, Field
@@ -793,10 +793,18 @@ def _safe_float(v: Any) -> float:
 
 @router.post("/webhooks/trade-event")
 async def trade_event_webhook(
-    payload: TradeEventPayload,
+    request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """Receive open_trade events and process challenge progress."""
+    raw_body = await request.body()
+    logger.info("WEBHOOK: raw body: %s", raw_body.decode("utf-8", errors="replace")[:2000])
+    try:
+        raw_json = await request.json()
+    except Exception as e:
+        logger.error("WEBHOOK: failed to parse JSON: %s | body: %s", e, raw_body.decode("utf-8", errors="replace")[:500])
+        return {"status": "error", "reason": f"invalid JSON: {e}"}
+    payload = TradeEventPayload(**{k: raw_json.get(k) for k in ("tenant", "event", "customer", "context")})
     logger.info("WEBHOOK: received payload: %s", payload.model_dump())
     _ACTION_BONUS_EVENTS = ("live_details", "submit_documents")
     if not payload.event or payload.event not in ("open_trade", "close_trade") + _ACTION_BONUS_EVENTS:
