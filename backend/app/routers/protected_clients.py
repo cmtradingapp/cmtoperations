@@ -277,8 +277,8 @@ async def list_legacy_protected_clients(
         f"""
         SELECT accountid, count_of_trades, days_from_ftc, mt4login,
                trading_account_id, retention_promo_group, cash_bonus_left_new,
-               active, dateadded
-        FROM [dbo].[accounts_protected_trades]
+               active, dateadded, CurrentNetDeposit
+        FROM [dbo].[accounts_protected_trades_temp]
         {where}
           AND dateadded IS NOT NULL
         ORDER BY dateadded DESC
