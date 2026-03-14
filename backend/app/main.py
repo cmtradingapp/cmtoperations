@@ -44,6 +44,7 @@ from app.routers.sendgrid_admin import router as sendgrid_router
 from app.routers.batch_calls import router as batch_calls_router
 from app.routers.agent_activity import router as agent_activity_router
 from app.routers.protected_clients import router as protected_clients_router, expire_protected_clients
+from app.routers.webhook_events import router as webhook_events_router
 from app.seed import seed_admin
 
 logging.basicConfig(level=logging.INFO)
@@ -887,6 +888,45 @@ async def lifespan(app: FastAPI):
         await session.commit()
     logger.info("CLAUD-91: optimove_event_log table migration applied")
 
+    # Webhook Events: generic event log + action rules tables
+    async with AsyncSessionLocal() as session:
+        await session.execute(_text("""
+            CREATE TABLE IF NOT EXISTS webhook_event_log (
+                id BIGSERIAL PRIMARY KEY,
+                event_name TEXT NOT NULL,
+                customer TEXT,
+                payload JSONB NOT NULL DEFAULT '{}',
+                actions_applied JSONB NOT NULL DEFAULT '[]',
+                created_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
+        await session.execute(_text(
+            'CREATE INDEX IF NOT EXISTS ix_wel_event ON webhook_event_log (event_name)'
+        ))
+        await session.execute(_text(
+            'CREATE INDEX IF NOT EXISTS ix_wel_customer ON webhook_event_log (customer)'
+        ))
+        await session.execute(_text(
+            'CREATE INDEX IF NOT EXISTS ix_wel_created ON webhook_event_log (created_at DESC)'
+        ))
+        await session.execute(_text("""
+            CREATE TABLE IF NOT EXISTS webhook_event_actions (
+                id SERIAL PRIMARY KEY,
+                event_name TEXT NOT NULL,
+                action_type TEXT NOT NULL DEFAULT 'log_only',
+                label TEXT,
+                config JSONB DEFAULT '{}',
+                is_active BOOLEAN DEFAULT TRUE,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """))
+        await session.execute(_text(
+            'CREATE INDEX IF NOT EXISTS ix_wea_event ON webhook_event_actions (event_name)'
+        ))
+        await session.commit()
+    logger.info("webhook_event_log and webhook_event_actions tables migration applied")
+
     # CLAUD-92: Extend challenges.type CHECK constraint to include 'streak'
     async with AsyncSessionLocal() as session:
         await session.execute(_text("""
@@ -1712,6 +1752,7 @@ app.include_router(sendgrid_router, prefix="/api")
 app.include_router(batch_calls_router, prefix="/api")
 app.include_router(agent_activity_router, prefix="/api")
 app.include_router(protected_clients_router, prefix="/api")
+app.include_router(webhook_events_router, prefix="/api")
 
 
 @app.get("/health")

@@ -24,6 +24,7 @@ import { ElenaAiResultsPage } from './pages/ElenaAiResultsPage';
 import { ChallengesPage } from './pages/ChallengesPage';
 import { ActionBonusesPage } from './pages/admin/ActionBonusesPage';
 import { ProtectedClientsPage } from './pages/admin/ProtectedClientsPage';
+import { WebhookEventsPage } from './pages/admin/WebhookEventsPage';
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -62,6 +63,7 @@ const NAV_SECTIONS: NavSection[] = [
     title: 'System',
     items: [
       { to: '/admin/protected-clients', label: 'Protected Clients', permission: 'protected-clients' },
+      { to: '/admin/webhook-events', label: 'Webhook Events', permission: 'webhook-events' },
     ],
   },
   {
@@ -89,6 +91,7 @@ const ROUTES: { path: string; title: string; element: ReactNode; permission?: st
   { path: '/elena-ai/upload-campaign', title: 'Upload to Campaign', element: <ElenaAiUploadPage />, permission: 'elena-ai-upload' },
   { path: '/admin/elena-ai-results', title: 'Elena AI Results', element: <ElenaAiResultsPage />, permission: 'elena-ai-results' },
   { path: '/admin/protected-clients', title: 'Protected Clients', element: <ProtectedClientsPage />, permission: 'protected-clients' },
+  { path: '/admin/webhook-events', title: 'Webhook Events', element: <WebhookEventsPage />, permission: 'webhook-events' },
 ];
 
 // ---------------------------------------------------------------------------

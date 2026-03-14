@@ -30,6 +30,8 @@ ALL_PAGES = [
     "agent_activity",
     # Protected Clients
     "protected-clients",
+    # Webhook Events
+    "webhook-events",
 ]
 
 
