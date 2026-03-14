@@ -262,6 +262,37 @@ async def list_protected_clients(
     return result
 
 
+@router.get("/protected-clients/list-legacy")
+async def list_legacy_protected_clients(
+    active: int | None = None,
+    _user=Depends(_require_protected_clients),
+) -> list:
+    """Clients in retention promo groups 1–6 (legacy 'Clients in Protected')."""
+    where = "WHERE retention_promo_group IN (1, 2, 3, 4, 5, 6)"
+    params: tuple = ()
+    if active is not None:
+        where += " AND active = ?"
+        params = (active,)
+    rows = await execute_query(
+        f"""
+        SELECT accountid, count_of_trades, days_from_ftc, mt4login,
+               trading_account_id, retention_promo_group, cash_bonus_left_new,
+               active, dateadded
+        FROM [dbo].[accounts_protected_trades]
+        {where}
+        ORDER BY dateadded DESC
+        """,
+        params,
+    )
+    result = []
+    for row in rows:
+        r = dict(row)
+        if hasattr(r.get("dateadded"), "isoformat"):
+            r["dateadded"] = r["dateadded"].isoformat()
+        result.append(r)
+    return result
+
+
 @router.get("/protected-clients/groups")
 async def list_protection_groups(
     _user=Depends(_require_protected_clients),

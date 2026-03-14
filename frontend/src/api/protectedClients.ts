@@ -49,6 +49,15 @@ export async function reactivateAll(): Promise<{ reactivated: number }> {
   return res.json();
 }
 
+export async function fetchLegacyProtectedClients(active?: number): Promise<Record<string, unknown>[]> {
+  const url = active !== undefined
+    ? `${API_BASE}/protected-clients/list-legacy?active=${active}`
+    : `${API_BASE}/protected-clients/list-legacy`;
+  const res = await fetch(url, { headers: authHeaders() });
+  if (!res.ok) throw new Error('Failed to fetch clients in protected');
+  return res.json();
+}
+
 export async function fetchProtectionGroups(): Promise<Record<string, unknown>[]> {
   const res = await fetch(`${API_BASE}/protected-clients/groups`, { headers: authHeaders() });
   if (!res.ok) throw new Error('Failed to fetch protection groups');

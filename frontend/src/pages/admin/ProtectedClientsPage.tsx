@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   addProtectedClient,
+  fetchLegacyProtectedClients,
   fetchProtectedClients,
   fetchProtectionGroups,
   type AddProtectedResult,
@@ -9,7 +10,7 @@ import {
 const GROUPS = [32, 33, 34] as const;
 type Group = (typeof GROUPS)[number];
 
-const TABS = ['Add Protected Client', 'Clients in Protected', 'Protection Groups'] as const;
+const TABS = ['Add Protected Client', 'Insured Clients', 'Clients in Protected', 'Protection Groups'] as const;
 type Tab = (typeof TABS)[number];
 
 // ── Generic read-only table ────────────────────────────────────────────────
@@ -70,11 +71,17 @@ export function ProtectedClientsPage() {
   const [result, setResult] = useState<AddProtectedResult | null>(null);
   const [error, setError] = useState('');
 
-  // Clients in Protected
+  // Insured Clients (groups 32/33/34)
   const [clientRows, setClientRows] = useState<Record<string, unknown>[]>([]);
   const [clientsLoading, setClientsLoading] = useState(false);
   const [clientsError, setClientsError] = useState('');
   const [activeFilter, setActiveFilter] = useState<'all' | 'active' | 'inactive'>('all');
+
+  // Clients in Protected (groups 1–6)
+  const [legacyRows, setLegacyRows] = useState<Record<string, unknown>[]>([]);
+  const [legacyLoading, setLegacyLoading] = useState(false);
+  const [legacyError, setLegacyError] = useState('');
+  const [legacyFilter, setLegacyFilter] = useState<'all' | 'active' | 'inactive'>('all');
 
   // Protection Groups
   const [groupRows, setGroupRows] = useState<Record<string, unknown>[]>([]);
@@ -92,9 +99,23 @@ export function ProtectedClientsPage() {
       .finally(() => setClientsLoading(false));
   };
 
+  const loadLegacy = (filter: 'all' | 'active' | 'inactive') => {
+    setLegacyLoading(true);
+    setLegacyError('');
+    setLegacyRows([]);
+    const param = filter === 'active' ? 1 : filter === 'inactive' ? 0 : undefined;
+    fetchLegacyProtectedClients(param)
+      .then(setLegacyRows)
+      .catch((e) => setLegacyError(e.message))
+      .finally(() => setLegacyLoading(false));
+  };
+
   useEffect(() => {
-    if (activeTab === 'Clients in Protected' && !clientRows.length && !clientsLoading) {
+    if (activeTab === 'Insured Clients' && !clientRows.length && !clientsLoading) {
       loadClients(activeFilter);
+    }
+    if (activeTab === 'Clients in Protected' && !legacyRows.length && !legacyLoading) {
+      loadLegacy(legacyFilter);
     }
     if (activeTab === 'Protection Groups' && !groupRows.length && !groupsLoading) {
       setGroupsLoading(true);
@@ -237,11 +258,10 @@ export function ProtectedClientsPage() {
         </div>
       )}
 
-      {/* ── Tab: Clients in Protected ── */}
-      {activeTab === 'Clients in Protected' && (
+      {/* ── Tab: Insured Clients (groups 32/33/34) ── */}
+      {activeTab === 'Insured Clients' && (
         <div className="space-y-3">
           <div className="flex items-center justify-between gap-3 flex-wrap">
-            {/* Filter buttons */}
             <div className="flex gap-1">
               {(['all', 'active', 'inactive'] as const).map((f) => (
                 <button
@@ -265,6 +285,36 @@ export function ProtectedClientsPage() {
             </button>
           </div>
           <DataTable rows={clientRows} loading={clientsLoading} error={clientsError} />
+        </div>
+      )}
+
+      {/* ── Tab: Clients in Protected (groups 1–6) ── */}
+      {activeTab === 'Clients in Protected' && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div className="flex gap-1">
+              {(['all', 'active', 'inactive'] as const).map((f) => (
+                <button
+                  key={f}
+                  onClick={() => { setLegacyFilter(f); loadLegacy(f); }}
+                  className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                    legacyFilter === f
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  {f.charAt(0).toUpperCase() + f.slice(1)}
+                </button>
+              ))}
+            </div>
+            <button
+              onClick={() => loadLegacy(legacyFilter)}
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+            >
+              Refresh
+            </button>
+          </div>
+          <DataTable rows={legacyRows} loading={legacyLoading} error={legacyError} />
         </div>
       )}
 
