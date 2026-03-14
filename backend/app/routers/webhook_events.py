@@ -28,7 +28,7 @@ router = APIRouter()
 
 _require = make_page_guard("webhook-events")
 
-ACTION_TYPES = ("log_only", "optimove", "challenge", "bonus")
+ACTION_TYPES = ("log_only", "optimove", "chrome_plugin", "challenge", "bonus")
 
 # Known event names (informational — the endpoint accepts anything)
 KNOWN_EVENTS = (
@@ -113,6 +113,51 @@ async def _apply_optimove_action(
         return f"error:{e}"
 
 
+async def _get_chrome_plugin_url(db: AsyncSession) -> tuple[str | None, str | None]:
+    """Return (push_url, push_secret) from integrations table."""
+    result = await db.execute(
+        text("SELECT base_url, api_key FROM integrations WHERE name = 'Chrome Plugin' AND is_active = TRUE LIMIT 1")
+    )
+    row = result.fetchone()
+    return (row[0], row[1]) if row else (None, None)
+
+
+async def _apply_chrome_plugin_action(
+    config: dict,
+    payload: GenericEventPayload,
+) -> str:
+    """Push event to the alertextension SSE server. Returns status string."""
+    push_url = config.get("push_url")
+    push_secret = config.get("push_secret")
+
+    if not push_url:
+        return "no_push_url"
+
+    customer = str(payload.customer) if payload.customer is not None else None
+    ctx = payload.context or {}
+    if not isinstance(ctx, dict):
+        ctx = {}
+
+    body = {
+        "event_type": payload.event,
+        "customer": customer,
+        "broadcast": config.get("broadcast", False),
+        "agent_email": config.get("agent_email"),  # optional fixed target
+        "data": ctx,
+    }
+
+    headers: dict = {"Content-Type": "application/json"}
+    if push_secret:
+        headers["X-Push-Secret"] = push_secret
+
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as client:
+            resp = await client.post(push_url, json=body, headers=headers)
+            return f"{resp.status_code}"
+    except Exception as e:
+        return f"error:{e}"
+
+
 async def _store_event(
     db: AsyncSession,
     event_name: str,
@@ -171,6 +216,13 @@ async def receive_generic_event(
             result_str = await _apply_optimove_action(cfg, payload, db)
             logger.info(
                 "WEBHOOK: optimove action rule=%d event=%s customer=%s result=%s",
+                rule_id, event_name, customer, result_str,
+            )
+
+        elif action_type == "chrome_plugin":
+            result_str = await _apply_chrome_plugin_action(cfg, payload)
+            logger.info(
+                "WEBHOOK: chrome_plugin action rule=%d event=%s customer=%s result=%s",
                 rule_id, event_name, customer, result_str,
             )
 

@@ -17,7 +17,7 @@ export const KNOWN_EVENTS = [
   'submit_documents',
 ] as const;
 
-export const ACTION_TYPES = ['log_only', 'optimove', 'challenge', 'bonus'] as const;
+export const ACTION_TYPES = ['log_only', 'optimove', 'chrome_plugin', 'challenge', 'bonus'] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];
 
 export interface ActionRule {

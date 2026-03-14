@@ -20,6 +20,7 @@ type Tab = (typeof TABS)[number];
 const ACTION_LABELS: Record<ActionType, string> = {
   log_only: 'Log Only',
   optimove: 'Forward to Optimove',
+  chrome_plugin: 'Chrome Plugin',
   challenge: 'Challenge Engine',
   bonus: 'Award Bonus',
 };
@@ -27,8 +28,14 @@ const ACTION_LABELS: Record<ActionType, string> = {
 const ACTION_COLORS: Record<ActionType, string> = {
   log_only: 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300',
   optimove: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  chrome_plugin: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
   challenge: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
   bonus: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300',
+};
+
+const ACTION_CONFIG_HINTS: Partial<Record<ActionType, string>> = {
+  optimove: '{"optimove_event_name":"withdrawal_request"}',
+  chrome_plugin: '{"push_url":"https://sq.cmtrading.com/push-event","push_secret":"...","broadcast":false}',
 };
 
 // ── Event Log Tab ─────────────────────────────────────────────────────────────
@@ -323,8 +330,14 @@ function ActionRulesTab() {
             <div>
               <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
                 Config (JSON)
-                {formAction === 'optimove' && (
-                  <span className="ml-2 font-normal text-gray-400">— e.g. {`{"optimove_event_name":"withdrawal_request"}`}</span>
+                {ACTION_CONFIG_HINTS[formAction] && (
+                  <button
+                    type="button"
+                    onClick={() => setFormConfig(ACTION_CONFIG_HINTS[formAction]!)}
+                    className="ml-2 font-normal text-blue-500 hover:underline"
+                  >
+                    fill template
+                  </button>
                 )}
               </label>
               <input
