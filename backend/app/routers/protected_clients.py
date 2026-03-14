@@ -181,15 +181,57 @@ async def reactivate_all_protected(
     return {"reactivated": n}
 
 
-@router.get("/protected-clients/lookup/{accountid}")
-async def lookup_protected_client(accountid: str) -> dict:
-    """Public endpoint — no auth required. Returns protection status for a given accountid."""
+@router.get("/insured-clients/lookup/{accountid}")
+async def lookup_insured_client(accountid: str) -> dict:
+    """Public endpoint — no auth required. Returns insured status (groups 32/33/34) for a given accountid."""
     rows = await execute_query(
         """
         SELECT active, count_of_trades, retention_promo_group,
                cash_bonus_left_new, dateadded
         FROM [dbo].[accounts_protected_trades]
         WHERE accountid = ?
+        """,
+        (accountid,),
+    )
+    if not rows:
+        return {"found": False}
+    r = dict(rows[0])
+    if hasattr(r.get("dateadded"), "isoformat"):
+        r["dateadded"] = r["dateadded"].isoformat()
+    return {"found": True, **r}
+
+
+@router.get("/protected-clients/lookup/{accountid}")
+async def lookup_protected_client(accountid: str) -> dict:
+    """Public endpoint — no auth required. Returns protected status (groups 1-6) with calculated fields."""
+    rows = await execute_query(
+        """
+        SELECT
+            apt.accountid,
+            apt.active,
+            apt.retention_promo_group,
+            apt.dateadded,
+            apt.CurrentNetDeposit,
+            apt.count_of_trades,
+            apt.cash_bonus_left_new                                    AS CashReturned,
+            apt.days_from_ftc,
+            -- DaysLeftInGroup: group's days_from_ftd minus client's days_from_ftc
+            (rpg.days_from_ftd - apt.days_from_ftc)                    AS DaysLeftInGroup,
+            -- TradesLeft: group's trade target minus trades already done (floor 0)
+            CASE WHEN (rpg.count_of_trades - apt.count_of_trades) < 0
+                 THEN 0
+                 ELSE (rpg.count_of_trades - apt.count_of_trades)
+            END                                                         AS TradesLeft,
+            -- AmountForNextGroup: nearest next group's min_net_deposit minus current net deposit
+            (
+                SELECT TOP 1 ng.min_net_deposit - apt.CurrentNetDeposit
+                FROM [dbo].[retention_promo_groups] ng
+                WHERE ng.min_net_deposit > rpg.min_net_deposit
+                ORDER BY ng.min_net_deposit ASC
+            )                                                           AS AmountForNextGroup
+        FROM [dbo].[accounts_protected_trades_temp] apt
+        JOIN [dbo].[retention_promo_groups] rpg ON rpg.id = apt.retention_promo_group
+        WHERE apt.accountid = ?
         """,
         (accountid,),
     )
