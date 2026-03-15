@@ -48,6 +48,15 @@ export function CallHistoryTable() {
   const [error, setError] = useState<string | null>(null);
   const [agentId, setAgentId] = useState('');
   const [callSuccessful, setCallSuccessful] = useState('');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+
+  const toggleRow = (id: string) => {
+    setExpandedRows((prev) => {
+      const next = new Set(prev);
+      next.has(id) ? next.delete(id) : next.add(id);
+      return next;
+    });
+  };
 
   const fetchMappings = async (conversations: ElevenLabsConversation[]) => {
     const ids = conversations.map((c) => c.conversation_id).filter(Boolean);
@@ -111,7 +120,7 @@ export function CallHistoryTable() {
       c.agent_name ?? '',
       c.call_duration_secs ?? '',
       c.call_successful ?? '',
-      c.metadata?.cost != null ? (c.metadata.cost / 100).toFixed(4) : '',
+      c.metadata?.cost != null ? c.metadata.cost.toFixed(4) : '',
     ]);
     const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -196,6 +205,7 @@ export function CallHistoryTable() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
+                    <th className="px-2 py-3 w-8" />
                     {['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration', 'Result', 'Cost'].map((h) => (
                       <th
                         key={h}
@@ -207,29 +217,53 @@ export function CallHistoryTable() {
                   </tr>
                 </thead>
                 <tbody>
-                  {conversations.map((c) => (
-                    <tr key={c.conversation_id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
-                      <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
-                        {accountMap[c.conversation_id] ?? <span className="text-gray-400 dark:text-gray-500">—</span>}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
-                        {formatDate(c.start_time_unix_secs)}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">
-                        {c.conversation_id}
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{c.agent_name ?? '—'}</td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                        {formatDuration(c.call_duration_secs)}
-                      </td>
-                      <td className="px-4 py-3 text-sm">
-                        <CallSuccessBadge value={c.call_successful} />
-                      </td>
-                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                        {c.metadata?.cost != null ? `$${(c.metadata.cost / 100).toFixed(4)}` : <span className="text-gray-400">—</span>}
-                      </td>
-                    </tr>
-                  ))}
+                  {conversations.map((c) => {
+                    const isExpanded = expandedRows.has(c.conversation_id);
+                    return (
+                      <>
+                        <tr key={c.conversation_id} className="border-b border-gray-100 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-700/50">
+                          <td className="px-2 py-3 text-center">
+                            <button
+                              onClick={() => toggleRow(c.conversation_id)}
+                              className="w-5 h-5 rounded border border-gray-300 dark:border-gray-600 text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 text-xs font-bold leading-none flex items-center justify-center"
+                            >
+                              {isExpanded ? '−' : '+'}
+                            </button>
+                          </td>
+                          <td className="px-4 py-3 text-sm font-medium text-gray-900 dark:text-gray-100">
+                            {accountMap[c.conversation_id] ?? <span className="text-gray-400 dark:text-gray-500">—</span>}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300 whitespace-nowrap">
+                            {formatDate(c.start_time_unix_secs)}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-500 dark:text-gray-400 font-mono text-xs">
+                            {c.conversation_id}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-700 dark:text-gray-300">{c.agent_name ?? '—'}</td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            {formatDuration(c.call_duration_secs)}
+                          </td>
+                          <td className="px-4 py-3 text-sm">
+                            <CallSuccessBadge value={c.call_successful} />
+                          </td>
+                          <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                            {c.metadata?.cost != null ? `$${c.metadata.cost.toFixed(4)}` : <span className="text-gray-400">—</span>}
+                          </td>
+                        </tr>
+                        {isExpanded && (
+                          <tr key={`${c.conversation_id}-expanded`} className="bg-gray-50 dark:bg-gray-700/30">
+                            <td />
+                            <td colSpan={7} className="px-4 py-3">
+                              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider mb-1">Transcript Summary</p>
+                              <p className="text-sm text-gray-700 dark:text-gray-300">
+                                {c.transcript_summary ?? <span className="text-gray-400 italic">No summary available</span>}
+                              </p>
+                            </td>
+                          </tr>
+                        )}
+                      </>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

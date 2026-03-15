@@ -51,7 +51,8 @@ async def _enrich_with_costs(http_client: Any, conversations: list[dict]) -> Non
                 )
                 resp.raise_for_status()
                 data = resp.json()
-                cost = (data.get("metadata") or {}).get("cost")
+                charging = ((data.get("metadata") or {}).get("charging") or {})
+                cost = charging.get("llm_price")
                 _cost_cache[conv_id] = float(cost) if cost is not None else None
             except Exception as e:
                 logger.warning("Failed to fetch cost for %s: %s", conv_id, e)
