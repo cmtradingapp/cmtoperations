@@ -169,7 +169,12 @@ async def generate_script(
         for block in content_blocks:
             if block.get("type") == "text":
                 text_content += block.get("text", "")
-        result = json.loads(text_content)
+        # Strip markdown code fences if present (e.g. ```json ... ```)
+        stripped = text_content.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[-1]
+            stripped = stripped.rsplit("```", 1)[0]
+        result = json.loads(stripped.strip())
     except (json.JSONDecodeError, KeyError, TypeError) as e:
         logger.error("Failed to parse Anthropic response as JSON: %s | raw: %s", e, data)
         raise HTTPException(status_code=502, detail="Failed to parse script from Anthropic response")
