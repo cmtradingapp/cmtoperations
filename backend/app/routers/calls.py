@@ -126,6 +126,7 @@ async def get_call_history(
     call_successful: Optional[str] = Query(None),
     page_size: int = Query(100, ge=1, le=100),
     cursor: Optional[str] = Query(None),
+    enrich: bool = Query(True),  # set False to skip per-conversation cost fetching
 ) -> Any:
     http_client = request.app.state.http_client
     params: dict[str, Any] = {"page_size": page_size}
@@ -144,7 +145,8 @@ async def get_call_history(
         response.raise_for_status()
         data = response.json()
         conversations = data.get("conversations") or []
-        await _enrich_conversations(http_client, conversations)
+        if enrich:
+            await _enrich_conversations(http_client, conversations)
         return data
     except Exception as e:
         logger.error(f"Failed to fetch ElevenLabs conversations: {e}")

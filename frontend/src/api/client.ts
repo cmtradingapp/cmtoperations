@@ -37,6 +37,7 @@ export async function getCallHistory(params?: {
   call_successful?: string;
   page_size?: number;
   cursor?: string;
+  enrich?: boolean;
 }): Promise<ConversationsResponse> {
   const response = await api.get<ConversationsResponse>('/calls/history', { params });
   return response.data;

@@ -136,6 +136,7 @@ export function CallHistoryTable() {
           agent_id: agentId || undefined,
           page_size: 100,
           cursor,
+          enrich: false,  // skip per-conversation cost fetching during bulk export
         });
         const convs = data.conversations ?? [];
         allConvs = [...allConvs, ...convs];
@@ -170,8 +171,8 @@ export function CallHistoryTable() {
       a.download = `call_history${agentId ? `_${agentId}` : ''}${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
       a.click();
       URL.revokeObjectURL(a.href);
-    } catch {
-      setError('Failed to export');
+    } catch (e: unknown) {
+      setError(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setExporting(false);
     }
