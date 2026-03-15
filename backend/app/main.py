@@ -45,6 +45,8 @@ from app.routers.batch_calls import router as batch_calls_router
 from app.routers.agent_activity import router as agent_activity_router
 from app.routers.protected_clients import router as protected_clients_router, expire_protected_clients
 from app.routers.webhook_events import router as webhook_events_router
+from app.routers.ai_calling import router as ai_calling_router
+from app.models.calling_agent import CallingAgent as _CallingAgent  # noqa: F401
 from app.seed import seed_admin
 
 logging.basicConfig(level=logging.INFO)
@@ -1753,6 +1755,7 @@ app.include_router(batch_calls_router, prefix="/api")
 app.include_router(agent_activity_router, prefix="/api")
 app.include_router(protected_clients_router, prefix="/api")
 app.include_router(webhook_events_router, prefix="/api")
+app.include_router(ai_calling_router, prefix="/api")
 
 
 @app.get("/health")

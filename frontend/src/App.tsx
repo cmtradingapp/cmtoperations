@@ -25,6 +25,7 @@ import { ChallengesPage } from './pages/ChallengesPage';
 import { ActionBonusesPage } from './pages/admin/ActionBonusesPage';
 import { ProtectedClientsPage } from './pages/admin/ProtectedClientsPage';
 import { WebhookEventsPage } from './pages/admin/WebhookEventsPage';
+import { CallingAgentsPage } from './pages/CallingAgentsPage';
 
 // ---------------------------------------------------------------------------
 // Nav config
@@ -50,6 +51,7 @@ const NAV_SECTIONS: NavSection[] = [
       { to: '/call-history', label: 'Call History', permission: 'call-history' },
       { to: '/call-dashboard', label: 'AI Call Dashboard', permission: 'call-dashboard' },
       { to: '/batch-call', label: 'Batch Call from File', permission: 'batch-call' },
+      { to: '/calling-agents', label: 'Calling Agents', permission: 'calling-agents' },
     ],
   },
   {
@@ -84,6 +86,7 @@ const ROUTES: { path: string; title: string; element: ReactNode; permission?: st
   { path: '/admin/integrations', title: 'Integrations & Config', element: <IntegrationsPage /> },
   { path: '/admin/challenges', title: 'Challenges', element: <ChallengesPage /> },
   { path: '/admin/action-bonuses', title: 'Automatic Bonus', element: <ActionBonusesPage /> },
+  { path: '/calling-agents', title: 'Calling Agents', element: <CallingAgentsPage />, permission: 'calling-agents' },
   { path: '/call-manager', title: 'Call Manager', element: <CallManagerPage />, permission: 'call-manager' },
   { path: '/call-history', title: 'Call History', element: <CallHistoryPage />, permission: 'call-history' },
   { path: '/call-dashboard', title: 'AI Call Dashboard', element: <AiCallDashboardPage />, permission: 'call-dashboard' },

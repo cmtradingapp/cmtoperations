@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: List[str] = ["http://localhost:5173", "http://localhost"]
 
+    # Anthropic — used for AI script generation
+    anthropic_api_key: str = ""
+
     # SendGrid (password reset emails)
     sendgrid_api_key: str = ""
     sendgrid_from_email: str = "no-reply@cmtrading.com"
