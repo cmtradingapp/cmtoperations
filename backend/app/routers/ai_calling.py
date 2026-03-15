@@ -77,7 +77,7 @@ async def list_voices(
     try:
         response = await http_client.get(
             "https://api.elevenlabs.io/v2/voices",
-            params={"voice_type": "personal", "page_size": 100},
+            params={"page_size": 100},
             headers={"xi-api-key": settings.elevenlabs_api_key},
             timeout=15.0,
         )
