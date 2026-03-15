@@ -171,7 +171,9 @@ export function CallingAgentsPage() {
       setFirstMessage(res.data.first_message);
       setEvalCriteria(res.data.evaluation_criteria ?? []);
     } catch (e: unknown) {
-      const msg = e instanceof Error ? e.message : String(e);
+      // Extract detail from axios 4xx/5xx response body if available
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      const msg = detail ?? (e instanceof Error ? e.message : String(e));
       setGenError(`Script generation failed: ${msg}`);
     } finally {
       setGenerating(false);
