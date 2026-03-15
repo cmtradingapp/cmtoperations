@@ -186,6 +186,21 @@ function TestCallModal({ agent, phoneNumbers, onClose, onScriptUpdated }: TestCa
     }
   };
 
+  const downloadAudio = async () => {
+    if (!conversationId) return;
+    try {
+      const res = await api.get(`/calling/conversations/${conversationId}/audio`, { responseType: 'blob' });
+      const url = URL.createObjectURL(res.data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `call_${conversationId}.mp3`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch {
+      alert('Failed to download audio');
+    }
+  };
+
   const applyUpdatedScript = async () => {
     if (!analysis?.updated_system_prompt) return;
     setApplying(true);
@@ -284,16 +299,14 @@ function TestCallModal({ agent, phoneNumbers, onClose, onScriptUpdated }: TestCa
                 </div>
               </div>
 
-              {/* Audio link once done */}
+              {/* Audio download once done */}
               {(callStatus === 'done' || callStatus === 'processing') && (
-                <a
-                  href={`${import.meta.env.VITE_API_BASE_URL || '/api'}/calling/conversations/${conversationId}/audio`}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                <button
+                  onClick={downloadAudio}
                   className="inline-flex items-center gap-2 text-sm text-indigo-600 dark:text-indigo-400 hover:underline"
                 >
                   🎧 Download call recording
-                </a>
+                </button>
               )}
 
               {/* Analyzing */}
@@ -307,7 +320,20 @@ function TestCallModal({ agent, phoneNumbers, onClose, onScriptUpdated }: TestCa
                 </div>
               )}
 
-              {analysisError && <p className="text-sm text-red-600 dark:text-red-400">{analysisError}</p>}
+              {analysisError && (
+                <div className="flex items-center gap-3">
+                  <p className="text-sm text-red-600 dark:text-red-400">{analysisError}</p>
+                  {conversationId && (
+                    <button
+                      onClick={() => runAnalysis(conversationId)}
+                      disabled={analyzing}
+                      className="px-3 py-1 text-xs bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-300 rounded hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50 transition-colors"
+                    >
+                      Retry
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Analysis results */}
               {analysis && (
