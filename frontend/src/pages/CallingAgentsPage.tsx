@@ -448,6 +448,7 @@ export function CallingAgentsPage() {
   const [createError, setCreateError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [publishingId, setPublishingId] = useState<number | null>(null);
   const [editAgent, setEditAgent] = useState<CallingAgent | null>(null);
   const [editSystemPrompt, setEditSystemPrompt] = useState('');
   const [editFirstMessage, setEditFirstMessage] = useState('');
@@ -543,6 +544,19 @@ export function CallingAgentsPage() {
       setCreateError(`Failed to create agent: ${detail ?? (e instanceof Error ? e.message : String(e))}`);
     } finally {
       setCreating(false);
+    }
+  };
+
+  const publishAgent = async (id: number) => {
+    setPublishingId(id);
+    try {
+      const res = await api.post<CallingAgent>(`/calling/agents/${id}/publish`);
+      setAgents((prev) => prev.map((a) => (a.id === id ? res.data : a)));
+    } catch (e: unknown) {
+      const detail = (e as { response?: { data?: { detail?: string } } })?.response?.data?.detail;
+      alert(`Failed to publish: ${detail ?? 'Unknown error'}`);
+    } finally {
+      setPublishingId(null);
     }
   };
 
@@ -734,10 +748,15 @@ export function CallingAgentsPage() {
                   </div>
 
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {agent.elevenlabs_agent_id && (
+                    {agent.elevenlabs_agent_id ? (
                       <button onClick={() => setTestCallAgent(agent)}
                         className="px-3 py-1 text-xs text-green-600 dark:text-green-400 border border-green-200 dark:border-green-700 rounded hover:bg-green-50 dark:hover:bg-green-900/30 transition-colors">
                         📞 Test Call
+                      </button>
+                    ) : (
+                      <button onClick={() => publishAgent(agent.id)} disabled={publishingId === agent.id}
+                        className="px-3 py-1 text-xs text-indigo-600 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-700 rounded hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50 transition-colors">
+                        {publishingId === agent.id ? 'Publishing…' : '↑ Push to ElevenLabs'}
                       </button>
                     )}
                     <button onClick={() => openEdit(agent)}

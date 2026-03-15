@@ -643,6 +643,64 @@ async def update_agent(
 
 
 # ---------------------------------------------------------------------------
+# POST /calling/agents/{id}/publish — push draft agent to ElevenLabs
+# ---------------------------------------------------------------------------
+
+@router.post("/calling/agents/{agent_id}/publish")
+async def publish_agent(
+    agent_id: int,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _user: Any = Depends(get_current_user),
+) -> Any:
+    result = await db.execute(select(CallingAgent).where(CallingAgent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+
+    http_client = request.app.state.http_client
+    el_payload = {
+        "name": agent.name,
+        "conversation_config": {
+            "agent": {
+                "prompt": {
+                    "prompt": agent.system_prompt,
+                    "llm": "claude-haiku-4-5",
+                    "temperature": 0.5,
+                },
+                "first_message": agent.first_message or "",
+                "language": "en",
+            },
+            "tts": {
+                "voice_id": agent.voice_id or "",
+                "model_id": "eleven_turbo_v2_5",
+            },
+        },
+    }
+    try:
+        el_response = await http_client.post(
+            "https://api.elevenlabs.io/v1/convai/agents",
+            json=el_payload,
+            headers={"xi-api-key": settings.elevenlabs_api_key, "Content-Type": "application/json"},
+            timeout=30.0,
+        )
+        el_response.raise_for_status()
+        el_data = el_response.json()
+        agent.elevenlabs_agent_id = el_data.get("agent_id")
+        agent.status = "active"
+        agent.updated_at = datetime.now(timezone.utc)
+        await db.commit()
+        await db.refresh(agent)
+        logger.info("Published agent %s to ElevenLabs: %s", agent_id, agent.elevenlabs_agent_id)
+        return _agent_to_dict(agent)
+    except Exception as e:
+        resp_text = getattr(getattr(e, "response", None), "text", "")
+        detail = f"ElevenLabs error: {e}" + (f" | {resp_text}" if resp_text else "")
+        logger.error("Failed to publish agent %s: %s", agent_id, detail)
+        raise HTTPException(status_code=502, detail=detail)
+
+
+# ---------------------------------------------------------------------------
 # DELETE /calling/agents/{id} — delete agent
 # ---------------------------------------------------------------------------
 
