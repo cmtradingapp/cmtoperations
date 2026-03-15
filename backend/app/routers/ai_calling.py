@@ -488,7 +488,7 @@ async def create_agent(
                 },
                 "tts": {
                     "voice_id": body.voice_id,
-                    "model_id": "eleven_turbo_v2_5",
+                    "model_id": "eleven_turbo_v2",
                 },
             },
         }
@@ -612,7 +612,7 @@ async def update_agent(
                 },
                 "tts": {
                     "voice_id": agent.voice_id or "",
-                    "model_id": "eleven_turbo_v2_5",
+                    "model_id": "eleven_turbo_v2",
                 },
             }
 
@@ -673,7 +673,7 @@ async def publish_agent(
             },
             "tts": {
                 "voice_id": agent.voice_id or "",
-                "model_id": "eleven_turbo_v2_5",
+                "model_id": "eleven_turbo_v2",
             },
         },
     }
