@@ -494,7 +494,7 @@ async def create_agent(
         }
         try:
             el_response = await http_client.post(
-                "https://api.elevenlabs.io/v1/convai/agents",
+                "https://api.elevenlabs.io/v1/convai/agents/create",
                 json=el_payload,
                 headers={
                     "xi-api-key": settings.elevenlabs_api_key,
@@ -679,7 +679,7 @@ async def publish_agent(
     }
     try:
         el_response = await http_client.post(
-            "https://api.elevenlabs.io/v1/convai/agents",
+            "https://api.elevenlabs.io/v1/convai/agents/create",
             json=el_payload,
             headers={"xi-api-key": settings.elevenlabs_api_key, "Content-Type": "application/json"},
             timeout=30.0,
