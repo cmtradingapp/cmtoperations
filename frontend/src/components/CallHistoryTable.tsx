@@ -45,9 +45,12 @@ export function CallHistoryTable() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentId, setAgentId] = useState('');
   const [callSuccessful, setCallSuccessful] = useState('');
+  const [durationMin, setDurationMin] = useState('');
+  const [durationMax, setDurationMax] = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   const toggleRow = (id: string) => {
@@ -111,28 +114,70 @@ export function CallHistoryTable() {
     }
   };
 
-  const exportCsv = () => {
-    const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result', 'Cost'];
-    const rows = conversations.map((c) => [
-      accountMap[c.conversation_id] ?? '',
-      c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
-      c.conversation_id,
-      c.agent_name ?? '',
-      c.call_duration_secs ?? '',
-      c.call_successful ?? '',
-      c.metadata?.cost != null ? c.metadata.cost.toFixed(4) : '',
-    ]);
-    const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-    a.download = `call_history${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
-    a.click();
-    URL.revokeObjectURL(a.href);
+  const applyFilters = (convs: ElevenLabsConversation[]) => {
+    return convs.filter((c) => {
+      if (callSuccessful && c.call_successful !== callSuccessful) return false;
+      if (durationMin !== '' && (c.call_duration_secs ?? 0) < Number(durationMin)) return false;
+      if (durationMax !== '' && (c.call_duration_secs ?? 0) > Number(durationMax)) return false;
+      return true;
+    });
   };
 
-  const conversations = callSuccessful
-    ? allConversations.filter((c) => c.call_successful === callSuccessful)
-    : allConversations;
+  const exportAll = async () => {
+    setExporting(true);
+    try {
+      // Start with what's already loaded, then fetch remaining pages
+      let allConvs = [...allConversations];
+      let cursor = nextCursor;
+      const newMappings: Record<string, string> = {};
+
+      while (cursor) {
+        const data = await getCallHistory({
+          agent_id: agentId || undefined,
+          page_size: 100,
+          cursor,
+        });
+        const convs = data.conversations ?? [];
+        allConvs = [...allConvs, ...convs];
+        cursor = data.next_cursor;
+
+        // Collect account mappings for new conversations
+        const ids = convs.map((c) => c.conversation_id).filter(Boolean);
+        if (ids.length > 0) {
+          try {
+            const res = await api.post('/call-mappings/lookup', { conversation_ids: ids });
+            Object.assign(newMappings, res.data.mappings);
+          } catch { /* non-critical */ }
+        }
+      }
+
+      const mergedMap = { ...accountMap, ...newMappings };
+      const filtered = applyFilters(allConvs);
+
+      const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result', 'Cost'];
+      const rows = filtered.map((c) => [
+        mergedMap[c.conversation_id] ?? '',
+        c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
+        c.conversation_id,
+        c.agent_name ?? '',
+        c.call_duration_secs ?? '',
+        c.call_successful ?? '',
+        c.metadata?.cost != null ? c.metadata.cost.toFixed(4) : '',
+      ]);
+      const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+      a.download = `call_history${agentId ? `_${agentId}` : ''}${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch {
+      setError('Failed to export');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const conversations = applyFilters(allConversations);
 
   useEffect(() => {
     load();
@@ -149,6 +194,8 @@ export function CallHistoryTable() {
     if (!unixSec) return '—';
     return new Date(unixSec * 1000).toLocaleString();
   };
+
+  const inputCls = 'border border-gray-300 dark:border-gray-600 rounded-md px-3 py-1.5 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 w-24';
 
   return (
     <div className="space-y-4">
@@ -169,6 +216,28 @@ export function CallHistoryTable() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Duration min (s)</label>
+          <input
+            type="number"
+            min="0"
+            placeholder="e.g. 30"
+            value={durationMin}
+            onChange={(e) => setDurationMin(e.target.value)}
+            className={inputCls}
+          />
+        </div>
+        <div>
+          <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">Duration max (s)</label>
+          <input
+            type="number"
+            min="0"
+            placeholder="e.g. 300"
+            value={durationMax}
+            onChange={(e) => setDurationMax(e.target.value)}
+            className={inputCls}
+          />
         </div>
         <button
           onClick={load}
@@ -195,10 +264,11 @@ export function CallHistoryTable() {
                 {nextCursor && <span className="text-gray-400 dark:text-gray-500 ml-1">(more available)</span>}
               </span>
               <button
-                onClick={exportCsv}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
+                onClick={exportAll}
+                disabled={exporting}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
               >
-                Export CSV
+                {exporting ? 'Exporting…' : 'Export All CSV'}
               </button>
             </div>
             <div className="overflow-x-auto">
