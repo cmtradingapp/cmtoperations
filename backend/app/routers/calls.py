@@ -24,47 +24,58 @@ router = APIRouter()
 _calls_dashboard_cache: dict[str, tuple[float, dict]] = {}
 _CALLS_DASHBOARD_TTL = 300  # 5 minutes
 
-# Cost cache: conversation_id → cost (float or None). Persists for process lifetime.
-# None means "fetched but no cost found"; missing key means "not yet fetched".
-_cost_cache: dict[str, float | None] = {}
+# Detail cache: conversation_id → {"cost": float|None, "transcript_summary": str|None}
+# Missing key = not yet fetched. Persists for process lifetime.
+_detail_cache: dict[str, dict] = {}
 
 
-async def _enrich_with_costs(http_client: Any, conversations: list[dict]) -> None:
-    """Fetch individual conversation details for any IDs not yet in the cost cache."""
+async def _enrich_conversations(http_client: Any, conversations: list[dict]) -> None:
+    """Fetch individual conversation details for IDs not yet cached.
+    Injects metadata.cost (llm_price, already in dollars) and transcript_summary
+    (from analysis) into each conversation dict.
+    """
     new_ids = [
         c["conversation_id"]
         for c in conversations
-        if c.get("conversation_id") and c["conversation_id"] not in _cost_cache
+        if c.get("conversation_id") and c["conversation_id"] not in _detail_cache
     ]
-    if not new_ids:
-        return
 
-    sem = asyncio.Semaphore(10)
+    if new_ids:
+        sem = asyncio.Semaphore(10)
 
-    async def fetch_one(conv_id: str) -> None:
-        async with sem:
-            try:
-                resp = await http_client.get(
-                    f"https://api.elevenlabs.io/v1/convai/conversations/{conv_id}",
-                    headers={"xi-api-key": settings.elevenlabs_api_key},
-                    timeout=10.0,
-                )
-                resp.raise_for_status()
-                data = resp.json()
-                charging = ((data.get("metadata") or {}).get("charging") or {})
-                cost = charging.get("llm_price")
-                _cost_cache[conv_id] = float(cost) if cost is not None else None
-            except Exception as e:
-                logger.warning("Failed to fetch cost for %s: %s", conv_id, e)
-                _cost_cache[conv_id] = None  # cache None so we don't retry endlessly
+        async def fetch_one(conv_id: str) -> None:
+            async with sem:
+                try:
+                    resp = await http_client.get(
+                        f"https://api.elevenlabs.io/v1/convai/conversations/{conv_id}",
+                        headers={"xi-api-key": settings.elevenlabs_api_key},
+                        timeout=10.0,
+                    )
+                    resp.raise_for_status()
+                    data = resp.json()
+                    charging = ((data.get("metadata") or {}).get("charging") or {})
+                    llm_price = charging.get("llm_price")
+                    summary = (data.get("analysis") or {}).get("transcript_summary")
+                    _detail_cache[conv_id] = {
+                        "cost": float(llm_price) if llm_price is not None else None,
+                        "transcript_summary": summary,
+                    }
+                except Exception as e:
+                    logger.warning("Failed to fetch detail for %s: %s", conv_id, e)
+                    _detail_cache[conv_id] = {"cost": None, "transcript_summary": None}
 
-    await asyncio.gather(*[fetch_one(cid) for cid in new_ids])
+        await asyncio.gather(*[fetch_one(cid) for cid in new_ids])
 
-    # Inject cost into conversation dicts
+    # Inject enrichment data into conversation dicts
     for c in conversations:
         cid = c.get("conversation_id")
-        if cid and _cost_cache.get(cid) is not None:
-            c.setdefault("metadata", {})["cost"] = _cost_cache[cid]
+        if not cid or cid not in _detail_cache:
+            continue
+        detail = _detail_cache[cid]
+        if detail["cost"] is not None:
+            c.setdefault("metadata", {})["cost"] = detail["cost"]
+        if detail["transcript_summary"] is not None:
+            c["transcript_summary"] = detail["transcript_summary"]
 
 
 @router.post("/calls/initiate", response_model=CallResponse)
@@ -133,7 +144,7 @@ async def get_call_history(
         response.raise_for_status()
         data = response.json()
         conversations = data.get("conversations") or []
-        await _enrich_with_costs(http_client, conversations)
+        await _enrich_conversations(http_client, conversations)
         return data
     except Exception as e:
         logger.error(f"Failed to fetch ElevenLabs conversations: {e}")
