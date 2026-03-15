@@ -103,7 +103,7 @@ export function CallHistoryTable() {
   };
 
   const exportCsv = () => {
-    const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result'];
+    const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result', 'Cost'];
     const rows = conversations.map((c) => [
       accountMap[c.conversation_id] ?? '',
       c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
@@ -111,6 +111,7 @@ export function CallHistoryTable() {
       c.agent_name ?? '',
       c.call_duration_secs ?? '',
       c.call_successful ?? '',
+      c.metadata?.cost ?? '',
     ]);
     const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -195,7 +196,7 @@ export function CallHistoryTable() {
               <table className="w-full">
                 <thead className="bg-gray-50 dark:bg-gray-700/50">
                   <tr>
-                    {['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration', 'Result'].map((h) => (
+                    {['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration', 'Result', 'Cost'].map((h) => (
                       <th
                         key={h}
                         className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider"
@@ -223,6 +224,9 @@ export function CallHistoryTable() {
                       </td>
                       <td className="px-4 py-3 text-sm">
                         <CallSuccessBadge value={c.call_successful} />
+                      </td>
+                      <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
+                        {c.metadata?.cost != null ? `$${c.metadata.cost.toFixed(4)}` : <span className="text-gray-400">—</span>}
                       </td>
                     </tr>
                   ))}

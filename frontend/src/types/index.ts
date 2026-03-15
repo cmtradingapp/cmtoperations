@@ -54,6 +54,7 @@ export interface ElevenLabsConversation {
   start_time_unix_secs?: number;
   call_duration_secs?: number;
   call_successful?: 'success' | 'failure' | 'unknown';
+  metadata?: { cost?: number; [key: string]: unknown };
 }
 
 export interface ConversationsResponse {
