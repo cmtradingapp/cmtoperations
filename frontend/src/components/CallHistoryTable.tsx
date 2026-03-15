@@ -111,7 +111,7 @@ export function CallHistoryTable() {
       c.agent_name ?? '',
       c.call_duration_secs ?? '',
       c.call_successful ?? '',
-      c.metadata?.cost ?? '',
+      c.metadata?.cost != null ? (c.metadata.cost / 100).toFixed(4) : '',
     ]);
     const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
     const a = document.createElement('a');
@@ -226,7 +226,7 @@ export function CallHistoryTable() {
                         <CallSuccessBadge value={c.call_successful} />
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-600 dark:text-gray-400">
-                        {c.metadata?.cost != null ? `$${c.metadata.cost.toFixed(4)}` : <span className="text-gray-400">—</span>}
+                        {c.metadata?.cost != null ? `$${(c.metadata.cost / 100).toFixed(4)}` : <span className="text-gray-400">—</span>}
                       </td>
                     </tr>
                   ))}
