@@ -45,7 +45,6 @@ export function CallHistoryTable() {
   const [nextCursor, setNextCursor] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
-  const [exporting, setExporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [agentId, setAgentId] = useState('');
   const [callSuccessful, setCallSuccessful] = useState('');
@@ -123,59 +122,50 @@ export function CallHistoryTable() {
     });
   };
 
-  const exportAll = async () => {
-    setExporting(true);
+  const loadAll = async () => {
+    if (!nextCursor) return;
+    setLoadingMore(true);
+    setError(null);
     try {
-      // Start with what's already loaded, then fetch remaining pages
-      let allConvs = [...allConversations];
-      let cursor = nextCursor;
-      const newMappings: Record<string, string> = {};
-
+      let cursor: string | undefined = nextCursor;
       while (cursor) {
         const data = await getCallHistory({
           agent_id: agentId || undefined,
           page_size: 100,
           cursor,
-          enrich: false,  // skip per-conversation cost fetching during bulk export
+          enrich: false,
         });
         const convs = data.conversations ?? [];
-        allConvs = [...allConvs, ...convs];
+        setAllConversations((prev) => [...prev, ...convs]);
+        await fetchMappings(convs);
         cursor = data.next_cursor;
-
-        // Collect account mappings for new conversations
-        const ids = convs.map((c) => c.conversation_id).filter(Boolean);
-        if (ids.length > 0) {
-          try {
-            const res = await api.post('/call-mappings/lookup', { conversation_ids: ids });
-            Object.assign(newMappings, res.data.mappings);
-          } catch { /* non-critical */ }
-        }
+        setNextCursor(cursor);
       }
-
-      const mergedMap = { ...accountMap, ...newMappings };
-      const filtered = applyFilters(allConvs);
-
-      const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result', 'Cost'];
-      const rows = filtered.map((c) => [
-        mergedMap[c.conversation_id] ?? '',
-        c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
-        c.conversation_id,
-        c.agent_name ?? '',
-        c.call_duration_secs ?? '',
-        c.call_successful ?? '',
-        c.metadata?.cost != null ? c.metadata.cost.toFixed(4) : '',
-      ]);
-      const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
-      a.download = `call_history${agentId ? `_${agentId}` : ''}${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
-      a.click();
-      URL.revokeObjectURL(a.href);
     } catch (e: unknown) {
-      setError(`Export failed: ${e instanceof Error ? e.message : String(e)}`);
+      setError(`Failed to load all: ${e instanceof Error ? e.message : String(e)}`);
     } finally {
-      setExporting(false);
+      setLoadingMore(false);
     }
+  };
+
+  const exportCsv = () => {
+    const filtered = applyFilters(allConversations);
+    const header = ['Account ID', 'Date', 'Conversation ID', 'Agent Name', 'Duration (s)', 'Result', 'Cost'];
+    const rows = filtered.map((c) => [
+      accountMap[c.conversation_id] ?? '',
+      c.start_time_unix_secs ? new Date(c.start_time_unix_secs * 1000).toLocaleString() : '',
+      c.conversation_id,
+      c.agent_name ?? '',
+      c.call_duration_secs ?? '',
+      c.call_successful ?? '',
+      c.metadata?.cost != null ? c.metadata.cost.toFixed(4) : '',
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(',')).join('\n');
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv' }));
+    a.download = `call_history${agentId ? `_${agentId}` : ''}${callSuccessful ? `_${callSuccessful}` : ''}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
   };
 
   const conversations = applyFilters(allConversations);
@@ -265,11 +255,10 @@ export function CallHistoryTable() {
                 {nextCursor && <span className="text-gray-400 dark:text-gray-500 ml-1">(more available)</span>}
               </span>
               <button
-                onClick={exportAll}
-                disabled={exporting}
-                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 disabled:opacity-50 transition-colors"
+                onClick={exportCsv}
+                className="px-3 py-1.5 bg-green-600 text-white rounded-md text-xs font-medium hover:bg-green-700 transition-colors"
               >
-                {exporting ? 'Exporting…' : 'Export All CSV'}
+                Export CSV
               </button>
             </div>
             <div className="overflow-x-auto">
@@ -339,13 +328,20 @@ export function CallHistoryTable() {
               </table>
             </div>
           {nextCursor && (
-            <div className="px-4 py-4 border-t border-gray-100 dark:border-gray-700 text-center">
+            <div className="px-4 py-4 border-t border-gray-100 dark:border-gray-700 flex items-center justify-center gap-3">
               <button
                 onClick={loadMore}
                 disabled={loadingMore}
                 className="px-5 py-2 bg-blue-600 text-white rounded-md text-sm font-medium hover:bg-blue-700 disabled:opacity-50 transition-colors"
               >
                 {loadingMore ? 'Loading…' : 'Load More'}
+              </button>
+              <button
+                onClick={loadAll}
+                disabled={loadingMore}
+                className="px-5 py-2 bg-indigo-600 text-white rounded-md text-sm font-medium hover:bg-indigo-700 disabled:opacity-50 transition-colors"
+              >
+                {loadingMore ? 'Loading…' : 'Load All'}
               </button>
             </div>
           )}
