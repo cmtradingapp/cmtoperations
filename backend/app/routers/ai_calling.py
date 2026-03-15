@@ -65,6 +65,16 @@ def _agent_to_dict(agent: CallingAgent) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# Pydantic: test call
+# ---------------------------------------------------------------------------
+
+class TestCallRequest(BaseModel):
+    to_number: str
+    phone_number_id: str
+    call_provider: str = "twilio"
+
+
+# ---------------------------------------------------------------------------
 # GET /calling/voices — proxy ElevenLabs voices
 # ---------------------------------------------------------------------------
 
@@ -87,6 +97,272 @@ async def list_voices(
     except Exception as e:
         logger.error("Failed to fetch ElevenLabs voices: %s", e)
         raise HTTPException(status_code=502, detail="Failed to fetch voices from ElevenLabs")
+
+
+# ---------------------------------------------------------------------------
+# GET /calling/phone-numbers — proxy ElevenLabs phone numbers
+# ---------------------------------------------------------------------------
+
+@router.get("/calling/phone-numbers")
+async def list_phone_numbers(
+    request: Request,
+    _user: Any = Depends(get_current_user),
+) -> Any:
+    http_client = request.app.state.http_client
+    try:
+        response = await http_client.get(
+            "https://api.elevenlabs.io/v1/convai/phone-numbers",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        # API returns a list directly or {"phone_numbers": [...]}
+        if isinstance(data, list):
+            return data
+        return data.get("phone_numbers", data)
+    except Exception as e:
+        logger.error("Failed to fetch ElevenLabs phone numbers: %s", e)
+        raise HTTPException(status_code=502, detail="Failed to fetch phone numbers from ElevenLabs")
+
+
+# ---------------------------------------------------------------------------
+# POST /calling/agents/{id}/test-call — initiate a test call
+# ---------------------------------------------------------------------------
+
+@router.post("/calling/agents/{agent_id}/test-call")
+async def test_call(
+    agent_id: int,
+    body: TestCallRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db),
+    _user: Any = Depends(get_current_user),
+) -> Any:
+    result = await db.execute(select(CallingAgent).where(CallingAgent.id == agent_id))
+    agent = result.scalar_one_or_none()
+    if not agent:
+        raise HTTPException(status_code=404, detail="Agent not found")
+    if not agent.elevenlabs_agent_id:
+        raise HTTPException(status_code=400, detail="Agent has not been synced to ElevenLabs yet")
+
+    http_client = request.app.state.http_client
+    e164 = body.to_number if body.to_number.startswith("+") else f"+{body.to_number}"
+
+    provider_urls = {
+        "twilio": "https://api.elevenlabs.io/v1/convai/twilio/outbound-call",
+        "sip_trunk": "https://api.elevenlabs.io/v1/convai/sip-trunk/outbound-call",
+    }
+    url = provider_urls.get(body.call_provider, provider_urls["twilio"])
+
+    payload = {
+        "agent_id": agent.elevenlabs_agent_id,
+        "agent_phone_number_id": body.phone_number_id,
+        "to_number": e164,
+    }
+
+    try:
+        response = await http_client.post(
+            url,
+            json=payload,
+            headers={
+                "xi-api-key": settings.elevenlabs_api_key,
+                "Content-Type": "application/json",
+            },
+            timeout=30.0,
+        )
+        response.raise_for_status()
+        data = response.json()
+        logger.info("Test call initiated: agent=%s to=%s conv=%s", agent.elevenlabs_agent_id, e164, data)
+        return {"success": True, "conversation_id": data.get("conversation_id") or data.get("callSid"), "to_number": e164}
+    except Exception as e:
+        resp_text = getattr(getattr(e, "response", None), "text", "")
+        detail = f"{e}" + (f" | {resp_text}" if resp_text else "")
+        logger.error("Test call failed: %s", detail)
+        raise HTTPException(status_code=502, detail=detail)
+
+
+# ---------------------------------------------------------------------------
+# GET /calling/conversations/{conversation_id} — proxy single conversation detail
+# ---------------------------------------------------------------------------
+
+@router.get("/calling/conversations/{conversation_id}")
+async def get_conversation(
+    conversation_id: str,
+    request: Request,
+    _user: Any = Depends(get_current_user),
+) -> Any:
+    http_client = request.app.state.http_client
+    try:
+        response = await http_client.get(
+            f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=15.0,
+        )
+        response.raise_for_status()
+        return response.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+
+# ---------------------------------------------------------------------------
+# POST /calling/conversations/{conversation_id}/analyze — Claude analyzes
+# transcript and suggests script improvements
+# ---------------------------------------------------------------------------
+
+_ANALYSIS_SYSTEM_PROMPT = """You are an expert AI call script analyst for CMTrading, a forex and CFD broker.
+You review transcripts of AI voice agent calls and provide specific, actionable improvements to the agent's system prompt.
+
+Your analysis must be honest and critical — if the call went poorly, say why clearly.
+Focus on:
+- Where the conversation broke down or felt unnatural
+- Objections the agent handled poorly or missed
+- Moments where the client lost interest or got confused
+- Specific phrases that worked well vs. poorly
+- Missing information or CTAs that should have been included
+
+Output format — return JSON with these fields:
+{
+  "call_quality": "excellent|good|fair|poor",
+  "summary": "2-3 sentence summary of how the call went",
+  "strengths": ["list of what worked well"],
+  "weaknesses": ["list of specific problems"],
+  "suggested_prompt_changes": [
+    {
+      "section": "name of the section to change (e.g. OBJECTION HANDLING)",
+      "issue": "what the problem was",
+      "suggestion": "exact text or instruction to add/change in the system prompt"
+    }
+  ],
+  "updated_system_prompt": "The FULL updated system prompt with all suggestions already applied. This should be ready to use."
+}
+
+Return ONLY valid JSON, no markdown."""
+
+
+class AnalyzeCallRequest(BaseModel):
+    system_prompt: str
+    agent_id: int
+
+
+@router.post("/calling/conversations/{conversation_id}/analyze")
+async def analyze_conversation(
+    conversation_id: str,
+    body: AnalyzeCallRequest,
+    request: Request,
+    _user: Any = Depends(get_current_user),
+) -> Any:
+    http_client = request.app.state.http_client
+
+    # 1. Fetch the conversation from ElevenLabs
+    try:
+        el_resp = await http_client.get(
+            f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=15.0,
+        )
+        el_resp.raise_for_status()
+        conv_data = el_resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch conversation: {e}")
+
+    # 2. Build transcript text
+    transcript_items = conv_data.get("transcript", [])
+    transcript_text = "\n".join(
+        f"{item.get('role', '?').upper()}: {item.get('message', '')}"
+        for item in transcript_items
+        if item.get("message")
+    )
+    if not transcript_text:
+        raise HTTPException(status_code=400, detail="No transcript available for this conversation yet")
+
+    analysis = conv_data.get("analysis") or {}
+    summary = analysis.get("transcript_summary", "")
+    call_successful = conv_data.get("call_successful", "unknown")
+    duration = conv_data.get("call_duration_secs", 0)
+
+    user_message = f"""Analyze this AI agent call and suggest improvements to the system prompt.
+
+CALL OUTCOME: {call_successful}
+DURATION: {duration}s
+AI ANALYSIS SUMMARY: {summary or "N/A"}
+
+TRANSCRIPT:
+{transcript_text}
+
+CURRENT SYSTEM PROMPT:
+{body.system_prompt}
+
+Provide specific improvements based on what actually happened in this call."""
+
+    # 3. Call Claude
+    payload = {
+        "model": "claude-opus-4-6",
+        "max_tokens": 4000,
+        "system": _ANALYSIS_SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_message}],
+    }
+    headers = {
+        "x-api-key": settings.anthropic_api_key,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+    }
+    try:
+        resp = await http_client.post(
+            "https://api.anthropic.com/v1/messages",
+            json=payload,
+            headers=headers,
+            timeout=90.0,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Anthropic API error: {e}")
+
+    try:
+        text = "".join(b.get("text", "") for b in data.get("content", []) if b.get("type") == "text")
+        stripped = text.strip()
+        if stripped.startswith("```"):
+            stripped = stripped.split("\n", 1)[-1].rsplit("```", 1)[0]
+        result = json.loads(stripped.strip())
+    except Exception as e:
+        logger.error("Failed to parse analysis JSON: %s | raw: %s", e, data)
+        raise HTTPException(status_code=502, detail="Failed to parse analysis from Claude")
+
+    # Also include raw conversation data for the frontend
+    result["conversation_id"] = conversation_id
+    result["call_successful"] = call_successful
+    result["duration_secs"] = duration
+    result["transcript"] = transcript_items
+    result["audio_url"] = f"/api/calling/conversations/{conversation_id}/audio"
+    return result
+
+
+# ---------------------------------------------------------------------------
+# GET /calling/conversations/{conversation_id}/audio — proxy audio download
+# ---------------------------------------------------------------------------
+
+@router.get("/calling/conversations/{conversation_id}/audio")
+async def get_conversation_audio(
+    conversation_id: str,
+    request: Request,
+    _user: Any = Depends(get_current_user),
+):
+    from fastapi.responses import StreamingResponse
+    http_client = request.app.state.http_client
+    try:
+        response = await http_client.get(
+            f"https://api.elevenlabs.io/v1/convai/conversations/{conversation_id}/audio",
+            headers={"xi-api-key": settings.elevenlabs_api_key},
+            timeout=60.0,
+        )
+        response.raise_for_status()
+        return StreamingResponse(
+            iter([response.content]),
+            media_type="audio/mpeg",
+            headers={"Content-Disposition": f"attachment; filename=call_{conversation_id}.mp3"},
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
 
 
 # ---------------------------------------------------------------------------
