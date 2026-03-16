@@ -32,6 +32,8 @@ ALL_PAGES = [
     "protected-clients",
     # Webhook Events
     "webhook-events",
+    # AI Calling Agents
+    "calling-agents",
 ]
 
 
