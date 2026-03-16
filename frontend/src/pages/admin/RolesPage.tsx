@@ -11,18 +11,21 @@ api.interceptors.request.use((config) => {
 
 // Exactly the pages that exist in the current nav — grouped to match sidebar sections
 const NAV_PAGES: { section: string; key: string; label: string }[] = [
-  { section: 'Marketing', key: 'challenges',        label: 'Challenges' },
-  { section: 'Marketing', key: 'action-bonuses',    label: 'Automatic Bonus' },
-  { section: 'Marketing', key: 'elena-ai-results',  label: 'Elena AI Results' },
-  { section: 'AI Calls',  key: 'call-manager',      label: 'Call Manager' },
-  { section: 'AI Calls',  key: 'call-history',      label: 'Call History' },
-  { section: 'AI Calls',  key: 'call-dashboard',    label: 'AI Call Dashboard' },
-  { section: 'AI Calls',  key: 'batch-call',        label: 'Batch Call from File' },
-  { section: 'AI Calls',  key: 'elena-ai-upload',   label: 'Upload to Campaign' },
-  { section: 'Admin',     key: 'users',             label: 'Users' },
-  { section: 'Admin',     key: 'roles',             label: 'Roles' },
-  { section: 'Admin',     key: 'permissions',       label: 'Permissions' },
-  { section: 'Admin',     key: 'integrations',      label: 'Integrations & Config' },
+  { section: 'Marketing', key: 'challenges',         label: 'Challenges' },
+  { section: 'Marketing', key: 'action-bonuses',     label: 'Automatic Bonus' },
+  { section: 'Marketing', key: 'elena-ai-results',   label: 'Elena AI Results' },
+  { section: 'AI Calls',  key: 'call-manager',       label: 'Call Manager' },
+  { section: 'AI Calls',  key: 'call-history',       label: 'Call History' },
+  { section: 'AI Calls',  key: 'call-dashboard',     label: 'AI Call Dashboard' },
+  { section: 'AI Calls',  key: 'batch-call',         label: 'Batch Call from File' },
+  { section: 'AI Calls',  key: 'calling-agents',     label: 'Calling Agents' },
+  { section: 'AI Calls',  key: 'elena-ai-upload',    label: 'Upload to Campaign' },
+  { section: 'System',    key: 'protected-clients',  label: 'Protected Clients' },
+  { section: 'System',    key: 'webhook-events',     label: 'Webhook Events' },
+  { section: 'Admin',     key: 'users',              label: 'Users' },
+  { section: 'Admin',     key: 'roles',              label: 'Roles' },
+  { section: 'Admin',     key: 'permissions',        label: 'Permissions' },
+  { section: 'Admin',     key: 'integrations',       label: 'Integrations & Config' },
 ];
 
 const PAGE_LABELS: Record<string, string> = Object.fromEntries(NAV_PAGES.map((p) => [p.key, p.label]));
@@ -314,7 +317,7 @@ export function RolesPage() {
           <div>
             <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-2">Page Access</label>
             <div className="space-y-3">
-              {['Marketing', 'AI Calls', 'Admin'].map((section) => (
+              {['Marketing', 'AI Calls', 'System', 'Admin'].map((section) => (
                 <div key={section}>
                   <p className="text-xs text-gray-400 dark:text-gray-500 uppercase tracking-wider mb-1.5">{section}</p>
                   <div className="flex flex-wrap gap-3">
