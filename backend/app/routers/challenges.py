@@ -1441,6 +1441,34 @@ async def trade_event_webhook(
                         optimove_url, completed_payload_body, tier[0], accountid, "challenge_completed", db
                     )
 
+        # Fire challenge_progress_update once per client per group per day (after rewards are settled)
+        if is_fresh_insert and optimove_url:
+            total_tiers = len(tiers)
+            amount_recv = sum(
+                float(tiers[i][4]) * reward_multiplier_val for i in range(last_rewarded)
+            )
+            potential_rem = sum(
+                float(tiers[i][4]) * reward_multiplier_val for i in range(last_rewarded, total_tiers)
+            )
+            progress_update_payload = {
+                "tenant": 991,
+                "event": "challenge_progress_update",
+                "customer": int(payload.customer),
+                "context": {
+                    "email": ctx.email or "",
+                    "challenge_name": group_name,
+                    "challenge_type": challenge_type,
+                    "challenge_period": challenge_timeperiod or "daily",
+                    "days_completed": int(current_progress),
+                    "days_remaining": max(0, total_tiers - int(current_progress)),
+                    "amount_received": round(amount_recv, 2),
+                    "potential_remaining": round(potential_rem, 2),
+                },
+            }
+            await _fire_optimove_event(
+                optimove_url, progress_update_payload, anchor_id, accountid, "challenge_progress_update", db
+            )
+
     await db.commit()
     logger.info(
         "CLAUD-90: Trade event processed for accountid=%s, MT4=%s -- %d rewards given",
