@@ -54,7 +54,7 @@ const maskPhone = (phone?: string) => {
   return phone.slice(0, 5) + '*'.repeat(Math.max(0, phone.length - 5));
 };
 
-const BATCH_SIZE = 1;
+const BATCH_SIZE = 10;
 
 function JobStatusBadge({ status }: { status: string }) {
   const cls: Record<string, string> = {
@@ -172,17 +172,22 @@ export function BatchCallPage() {
       for (let i = 0; i < parsed.length; i += BATCH_SIZE) {
         if (cancelRef.current) break;
         const chunk = parsed.slice(i, i + BATCH_SIZE);
-        const res = await api.post('/clients/lookup', { clients: chunk });
-        const enriched: BatchClient[] = res.data.map((r: any) => ({
-          id: r.id,
-          first_name: r.first_name ?? '',
-          email: r.email ?? '',
-          phone: r.phone ?? undefined,
-          retention_rep: r.retention_rep ?? undefined,
-          retention_status_display: r.retention_status_display ?? undefined,
-          error: r.error ?? undefined,
-        }));
-        allEnriched.push(...enriched);
+        try {
+          const res = await api.post('/clients/lookup', { clients: chunk });
+          const enriched: BatchClient[] = res.data.map((r: any) => ({
+            id: r.id,
+            first_name: r.first_name ?? '',
+            email: r.email ?? '',
+            phone: r.phone ?? undefined,
+            retention_rep: r.retention_rep ?? undefined,
+            retention_status_display: r.retention_status_display ?? undefined,
+            error: r.error ?? undefined,
+          }));
+          allEnriched.push(...enriched);
+        } catch {
+          // Mark this chunk's clients as errored but continue processing
+          chunk.forEach((c) => allEnriched.push({ id: c.id, first_name: '', email: '', error: 'CRM lookup failed' }));
+        }
         setClients([...allEnriched]);
         setProgress({ current: Math.min(i + BATCH_SIZE, parsed.length), total: parsed.length });
       }
