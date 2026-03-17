@@ -808,16 +808,24 @@ async def trade_event_webhook(
     logger.info("WEBHOOK: received payload: %s", payload.model_dump())
 
     # Always log to webhook_event_log regardless of challenge activity
-    from app.routers.webhook_events import _store_event
+    import json as _json
+    from sqlalchemy import text as _text
+    from app.pg_database import AsyncSessionLocal as _AsyncSessionLocal
     try:
-        await _store_event(
-            db=db,
-            event_name=payload.event or "unknown",
-            customer=str(payload.customer) if payload.customer is not None else None,
-            payload_dict=raw_json,
-            actions_applied=[],
-        )
-        await db.commit()
+        async with _AsyncSessionLocal() as _log_sess:
+            await _log_sess.execute(
+                _text(
+                    "INSERT INTO webhook_event_log (event_name, customer, payload, actions_applied) "
+                    "VALUES (:ev, :cust, CAST(:payload AS jsonb), '[]'::jsonb)"
+                ),
+                {
+                    "ev": payload.event or "unknown",
+                    "cust": str(payload.customer) if payload.customer is not None else None,
+                    "payload": _json.dumps(raw_json),
+                },
+            )
+            await _log_sess.commit()
+            logger.info("WEBHOOK: event logged to webhook_event_log")
     except Exception as _log_err:
         logger.warning("WEBHOOK: failed to store event log: %s", _log_err)
 
