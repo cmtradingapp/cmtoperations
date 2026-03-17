@@ -30,7 +30,7 @@ class Base(DeclarativeBase):
 
 
 async def init_pg() -> None:
-    from app.models import ant_acc, audit_log, call_mapping, client_score, crm_permission, dealio_users, etl_sync_log, integration, role, scoring_rule, trades_mt4, user, user_preferences, vtiger_mttransactions, vtiger_trading_accounts  # noqa: F401
+    from app.models import ant_acc, audit_log, call_mapping, calling_agent, client_score, crm_permission, dealio_users, etl_sync_log, integration, role, scoring_rule, trades_mt4, user, user_preferences, vtiger_mttransactions, vtiger_trading_accounts  # noqa: F401
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)

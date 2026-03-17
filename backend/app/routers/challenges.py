@@ -806,6 +806,21 @@ async def trade_event_webhook(
         return {"status": "error", "reason": f"invalid JSON: {e}"}
     payload = TradeEventPayload(**{k: raw_json.get(k) for k in ("tenant", "event", "customer", "context")})
     logger.info("WEBHOOK: received payload: %s", payload.model_dump())
+
+    # Always log to webhook_event_log regardless of challenge activity
+    from app.routers.webhook_events import _store_event
+    try:
+        await _store_event(
+            db=db,
+            event_name=payload.event or "unknown",
+            customer=str(payload.customer) if payload.customer is not None else None,
+            payload_dict=raw_json,
+            actions_applied=[],
+        )
+        await db.commit()
+    except Exception as _log_err:
+        logger.warning("WEBHOOK: failed to store event log: %s", _log_err)
+
     _ACTION_BONUS_EVENTS = ("live_details", "submit_documents")
     if not payload.event or payload.event not in ("open_trade", "close_trade") + _ACTION_BONUS_EVENTS:
         return {"status": "ignored", "reason": "not a supported trade event"}
