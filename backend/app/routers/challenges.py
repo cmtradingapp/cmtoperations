@@ -1056,16 +1056,6 @@ async def trade_event_webhook(
                     new_streak = 1
                 last_rewarded = (streak[2] or 0) if streak else 0
 
-                # Check if first trade today (for Optimove, before upsert)
-                existing_row = await db.execute(
-                    text(
-                        'SELECT 1 FROM challenge_client_progress '
-                        'WHERE "challengeId" = :cid AND trading_account_id = :acc AND date = :pd'
-                    ),
-                    {"cid": anchor_id, "acc": account_number, "pd": progress_date},
-                )
-                is_fresh_insert = existing_row.fetchone() is None
-
                 # Persist streak state (only update current_streak + last_trade_date; preserve last_rewarded_tier)
                 await db.execute(
                     text(
@@ -1078,21 +1068,21 @@ async def trade_event_webhook(
                     {"gn": group_name, "acc": accountid, "streak": new_streak, "today": today},
                 )
 
-                # Upsert daily progress record (SET progress_value = streak, not additive)
-                await db.execute(
+                # Insert daily progress record — ON CONFLICT DO NOTHING so only the first
+                # concurrent request for the same client+day actually inserts (race-condition safe).
+                progress_result = await db.execute(
                     text(
                         'INSERT INTO challenge_client_progress '
                         '("challengeId", trading_account_id, progress_value, last_rewarded_tier, '
                         'date, accountid, status, total_reward) '
                         "VALUES (:cid, :acc, :streak, 0, :pd, :accountid, 'In Progress', 0) "
-                        'ON CONFLICT ("challengeId", trading_account_id, date) '
-                        "DO UPDATE SET progress_value = :streak, "
-                        "status = CASE WHEN challenge_client_progress.status = 'Open' THEN 'In Progress' "
-                        "ELSE challenge_client_progress.status END"
+                        'ON CONFLICT ("challengeId", trading_account_id, date) DO NOTHING'
                     ),
                     {"cid": anchor_id, "acc": account_number, "streak": new_streak,
                      "pd": progress_date, "accountid": accountid},
                 )
+                # Only the request that actually inserted the row should fire rewards
+                is_fresh_insert = progress_result.rowcount > 0
 
             current_progress = float(new_streak)
 
