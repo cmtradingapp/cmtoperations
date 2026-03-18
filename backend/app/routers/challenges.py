@@ -921,7 +921,7 @@ async def trade_event_webhook(
     # Fetch all active challenges
     active_challenges = await db.execute(
         text(
-            'SELECT "challengeId", name, type, targetvalue, rewardamount, group_name, audience_criteria, timeperiod, valid_until, reward_multiplier, expires_on, symbol '
+            'SELECT "challengeId", name, type, targetvalue, rewardamount, group_name, audience_criteria, timeperiod, valid_until, reward_multiplier, expires_on, symbol, "InsertDate" '
             'FROM challenges WHERE isactive = 1 ORDER BY group_name, targetvalue, "challengeId"'
         )
     )
@@ -1055,6 +1055,18 @@ async def trade_event_webhook(
                 else:
                     new_streak = 1
                 last_rewarded = (streak[2] or 0) if streak else 0
+
+                # Validate: streak must start on the challenge's first day.
+                # If this is a fresh start (streak=1) and today is NOT the challenge's
+                # creation date, the client missed Day 1 and is not eligible.
+                if new_streak == 1:
+                    challenge_start_date = tiers[0][12].date() if hasattr(tiers[0][12], "date") else tiers[0][12]
+                    if today != challenge_start_date:
+                        logger.info(
+                            "Streak: accountid=%s missed Day 1 for '%s' (started %s) — skipping",
+                            accountid, group_name, challenge_start_date,
+                        )
+                        continue
 
                 # Persist streak state (only update current_streak + last_trade_date; preserve last_rewarded_tier)
                 await db.execute(
