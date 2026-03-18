@@ -6,16 +6,7 @@ function authHeaders(): Record<string, string> {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
-export const KNOWN_EVENTS = [
-  'withdrawal_request',
-  'withdrawal_change',
-  'close_trade_live',
-  'deposit_attempt',
-  'open_trade',
-  'close_trade',
-  'live_details',
-  'submit_documents',
-] as const;
+export const KNOWN_EVENTS = ['open_trade'] as const;
 
 export const ACTION_TYPES = ['log_only', 'optimove', 'chrome_plugin', 'challenge', 'bonus'] as const;
 export type ActionType = (typeof ACTION_TYPES)[number];

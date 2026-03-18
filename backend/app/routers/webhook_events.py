@@ -31,16 +31,7 @@ _require = make_page_guard("webhook-events")
 ACTION_TYPES = ("log_only", "optimove", "chrome_plugin", "challenge", "bonus")
 
 # Known event names (informational — the endpoint accepts anything)
-KNOWN_EVENTS = (
-    "withdrawal_request",
-    "withdrawal_change",
-    "close_trade_live",
-    "deposit_attempt",
-    "open_trade",
-    "close_trade",
-    "live_details",
-    "submit_documents",
-)
+KNOWN_EVENTS = ("open_trade",)
 
 
 # ── Pydantic models ────────────────────────────────────────────────────────────
