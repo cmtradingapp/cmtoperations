@@ -58,6 +58,19 @@ async def lifespan(app: FastAPI):
     await init_history_db()
     await init_pg()
     init_replica()
+
+    # Mark any jobs left in queued/running state from a previous run as interrupted
+    try:
+        from sqlalchemy import text as _t
+        async with AsyncSessionLocal() as _s:
+            await _s.execute(
+                _t("UPDATE batch_jobs SET status='interrupted', completed_at=NOW() "
+                   "WHERE status IN ('queued','running')")
+            )
+            await _s.commit()
+        logger.info("batch_jobs: orphaned running/queued jobs marked as interrupted")
+    except Exception as _e:
+        logger.warning("batch_jobs cleanup failed: %s", _e)
     from sqlalchemy import text as _text
     # Lock timeout for all DDL migrations� prevents infinite hang if autovacuum or
     # another session holds a lock. try/except on each block so a timeout skips
