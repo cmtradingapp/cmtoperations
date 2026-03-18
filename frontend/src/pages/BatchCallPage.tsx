@@ -249,6 +249,9 @@ export function BatchCallPage() {
     if (!jobStatus) return;
     try {
       await api.post(`/batch-calls/${jobStatus.job_id}/cancel`);
+      if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
+      setJobStatus((prev) => prev ? { ...prev, status: 'cancelled' } : prev);
+      fetchHistory();
     } catch {}
   };
 
