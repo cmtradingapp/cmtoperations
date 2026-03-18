@@ -1567,6 +1567,11 @@ async def reset_daily_challenges() -> None:
                 if gn_timeperiod == "weekly":
                     continue
 
+                # Skip streak challenges — they span multiple days and must not be reset daily
+                gn_type = group_row[1]
+                if gn_type == "streak":
+                    continue
+
                 # Get current tiers for this group
                 tier_rows = await db.execute(
                     text(
