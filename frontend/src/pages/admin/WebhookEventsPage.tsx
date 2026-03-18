@@ -1,7 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
   ACTION_TYPES,
-  KNOWN_EVENTS,
   type ActionRule,
   type ActionType,
   type EventLogRow,
@@ -49,7 +48,12 @@ function EventLogTab() {
   const [filterEvent, setFilterEvent] = useState('');
   const [filterCustomer, setFilterCustomer] = useState('');
   const [expanded, setExpanded] = useState<number | null>(null);
+  const [eventNames, setEventNames] = useState<string[]>([]);
   const PAGE_SIZE = 50;
+
+  useEffect(() => {
+    fetchEventStats().then((stats) => setEventNames(stats.map((s) => s.event_name))).catch(() => {});
+  }, []);
 
   const load = (p: number, ev: string, cust: string) => {
     setLoading(true);
@@ -60,7 +64,7 @@ function EventLogTab() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(1, '', ''); }, []);
+  useEffect(() => { load(1, '', ''); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSearch = () => { setPage(1); load(1, filterEvent, filterCustomer); };
 
@@ -76,7 +80,7 @@ function EventLogTab() {
             className="px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
           >
             <option value="">All events</option>
-            {KNOWN_EVENTS.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
+            {eventNames.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
           </select>
         </div>
         <div>
@@ -201,10 +205,11 @@ function ActionRulesTab() {
   const [rules, setRules] = useState<ActionRule[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [eventNames, setEventNames] = useState<string[]>([]);
 
   // New rule form
   const [showForm, setShowForm] = useState(false);
-  const [formEvent, setFormEvent] = useState(KNOWN_EVENTS[0] as string);
+  const [formEvent, setFormEvent] = useState('');
   const [formCustomEvent, setFormCustomEvent] = useState('');
   const [formAction, setFormAction] = useState<ActionType>('log_only');
   const [formLabel, setFormLabel] = useState('');
@@ -220,7 +225,16 @@ function ActionRulesTab() {
       .finally(() => setLoading(false));
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    fetchEventStats()
+      .then((stats) => {
+        const names = stats.map((s) => s.event_name);
+        setEventNames(names);
+        if (names.length > 0) setFormEvent(names[0]);
+      })
+      .catch(() => {});
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleSave = async () => {
     let parsedConfig: Record<string, unknown> = {};
@@ -294,7 +308,8 @@ function ActionRulesTab() {
                 onChange={(e) => setFormEvent(e.target.value)}
                 className="w-full px-2 py-1.5 rounded border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500"
               >
-                {KNOWN_EVENTS.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
+                {eventNames.length === 0 && <option value="">No events received yet</option>}
+                {eventNames.map((ev) => <option key={ev} value={ev}>{ev}</option>)}
                 <option value="__custom__">Custom…</option>
               </select>
               {formEvent === '__custom__' && (
